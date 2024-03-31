@@ -17,60 +17,52 @@ local system_call_table = {
             ["lua_total"] = lua_total,
             ["lua_used"] = lua_used,
             ["lua_max_used"] = lua_max_used,
+            ["lua_used_presentage"] = lua_used / lua_total,
+            ["lua_max_used_presentage"] = lua_max_used / lua_total,
             ["sys_total"] = sys_total,
             ["sys_used"] = sys_used,
-            ["sys_max_used"] = sys_max_used
-        }
-        return json.encode(mem)
-    end,
-    MEM_USAGE = function()
-        local lua_total, lua_used, lua_max_used = rtos.meminfo("lua")
-        local sys_total, sys_used, sys_max_used = rtos.meminfo("sys")
-        local mem = {
-            ["lua_used"] = lua_used / lua_total,
-            ["lua_max_used"] = lua_max_used / lua_total,
-            ["sys_used"] = sys_used / sys_total,
-            ["sys_max_used"] = sys_max_used / sys_total
+            ["sys_max_used"] = sys_max_used,
+            ["sys_used_presentage"] = sys_used / lua_total,
+            ["sys_max_used_presentage"] = sys_max_used / lua_total,
         }
         return json.encode(mem)
     end,
     IMEI = function()
         return mobile.imei()
     end,
-    NUMBER = function()
-        local number = mobile.number()
-        if number == nil then
-            return "Unknown"
-        end
-        return number
-    end,
-    BAND = function()
+    MOBILE = function()
         local band = zbuff.create(40)
         mobile.getBand(band)
         local bands = {}
         for i = 0, band:used() - 1 do
             bands[#bands + 1] = string.format("%d", band[i])
         end
-        return table.concat(bands, ",")
+        local modem = {
+            ["IMEI"] = mobile.imei(),
+            ["NUMBER"] = mobile.number(),
+            ["BAND"] = json.encode(bands),
+        }
+        return json.encode(modem)
     end,
     CELL = function()
         mobile.reqCellInfo(15)
         sys.waitUntil("CELL_INFO_UPDATE", 15000) -- wait up to 15s
         return json.encode(mobile.getCellInfo())
     end,
-    MQTT = function()
-        if mqttc == nil then
-            return "mqttc not initialised"
-        else
-            local mapping = {
-                [mqtt.STATE_DISCONNECT] = "STATE_DISCONNECT",
-                [mqtt.STATE_SCONNECT] = "STATE_SCONNECT",
-                [mqtt.STATE_MQTT] = "STATE_MQTT",
-                [mqtt.STATE_READY] = "STATE_READY"
-            }
-            return mapping[mqttc:state()]
-        end
-    end
+    -- MQTT = function()
+    --     if mqttc == nil then
+    --         return "mqttc not initialised"
+    --     else
+    --         local mapping = {
+    --             [mqtt.STATE_DISCONNECT] = "STATE_DISCONNECT",
+    --             [mqtt.STATE_SCONNECT] = "STATE_SCONNECT",
+    --             [mqtt.STATE_MQTT] = "STATE_MQTT",
+    --             [mqtt.STATE_READY] = "STATE_READY"
+    --         }
+    --         return mapping[mqttc:state()]
+    --     end
+    -- end,
+    -- log.info("cipher", "suites", json.encode(crypto.cipher_suites()))
 }
 
 function system_service.system_call_blocking(cmd)

@@ -65,8 +65,7 @@ local system_call_table = {
     -- log.info("cipher", "suites", json.encode(crypto.cipher_suites()))
 }
 
-function system_service.system_call_blocking(cmd)
-    assert(cmd ~= nil)
+function system_service.system_call(cmd)
     if cmd == "HELP" then
         local keys = {}
         for key, _ in pairs(system_call_table) do
@@ -80,24 +79,5 @@ function system_service.system_call_blocking(cmd)
     end
     return func()
 end
-
-function system_service.system_call(cmd, cb)
-    assert(cmd ~= nil)
-    assert(cb ~= nil)
-    sys.publish("_SYS_CALL", cmd, cb)
-end
-
--- taskInit will be executed when the require("tool") is called in main.lua
-sys.taskInit(function()
-    while true do
-        local ret, cmd, cb = sys.waitUntil("_SYS_CALL", 300000)
-        if ret then
-            assert(cmd ~= nil)
-            assert(cb ~= nil)
-            local result = system_service.system_call_blocking(cmd)
-            cb(result)
-        end
-    end
-end)
 
 return system_service

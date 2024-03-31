@@ -1,6 +1,6 @@
--- LuaTools需要PROJECT和VERSION这两个信息
-PROJECT = "mqttdemo"
-VERSION = "1.0.0"
+-- Required by LuaTools for firmware generation 
+PROJECT = "nemopi-dtu"
+VERSION = "0.0.1"
 
 --[[
 MQTT is an inbuilt lib, so user doesn't need to import it explicitly 

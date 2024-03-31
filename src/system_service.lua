@@ -1,5 +1,7 @@
 local system_service = {}
 
+local libfota = require("libfota")
+
 local system_call_table = {
     PING = function()
         return "OK"
@@ -51,6 +53,16 @@ local system_call_table = {
         mobile.reqCellInfo(15)
         sys.waitUntil("CELL_INFO_UPDATE", 15000) -- wait up to 15s
         return json.encode(mobile.getCellInfo())
+    end,
+    OTA = function(ota_url)
+        function fota_cb(ret)
+            log.info("fota", ret)
+            if ret == 0 then
+                rtos.reboot()
+            end
+        end
+        libfota.request(fota_cb, ota_url)
+        return "OTA from " .. ota_url
     end
 }
 
@@ -61,6 +73,9 @@ function system_service.register_system_call(cmd, func)
 end
 
 function system_service.system_call(cmd, ...)
+    if cmd == nil then
+        return "Error: empty command"
+    end
     if cmd == "HELP" then
         local keys = {}
         for key, _ in pairs(system_call_table) do
@@ -70,7 +85,7 @@ function system_service.system_call(cmd, ...)
     end
     local func = system_call_table[cmd]
     if func == nil then
-        return "Unsupported command: " .. cmd
+        return "Error: unsupported command: " .. cmd
     end
     return func(...)
 end

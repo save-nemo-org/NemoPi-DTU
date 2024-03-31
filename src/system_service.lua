@@ -23,7 +23,7 @@ local system_call_table = {
             ["sys_used"] = sys_used,
             ["sys_max_used"] = sys_max_used,
             ["sys_used_presentage"] = sys_used / lua_total,
-            ["sys_max_used_presentage"] = sys_max_used / lua_total,
+            ["sys_max_used_presentage"] = sys_max_used / lua_total
         }
         return json.encode(mem)
     end,
@@ -40,7 +40,7 @@ local system_call_table = {
         local modem = {
             ["IMEI"] = mobile.imei(),
             ["NUMBER"] = mobile.number(),
-            ["BAND"] = json.encode(bands),
+            ["BAND"] = table.concat(bands, ",")
         }
         return json.encode(modem)
     end,
@@ -48,22 +48,14 @@ local system_call_table = {
         mobile.reqCellInfo(15)
         sys.waitUntil("CELL_INFO_UPDATE", 15000) -- wait up to 15s
         return json.encode(mobile.getCellInfo())
-    end,
-    -- MQTT = function()
-    --     if mqttc == nil then
-    --         return "mqttc not initialised"
-    --     else
-    --         local mapping = {
-    --             [mqtt.STATE_DISCONNECT] = "STATE_DISCONNECT",
-    --             [mqtt.STATE_SCONNECT] = "STATE_SCONNECT",
-    --             [mqtt.STATE_MQTT] = "STATE_MQTT",
-    --             [mqtt.STATE_READY] = "STATE_READY"
-    --         }
-    --         return mapping[mqttc:state()]
-    --     end
-    -- end,
-    -- log.info("cipher", "suites", json.encode(crypto.cipher_suites()))
+    end
 }
+
+function system_service.register_system_call(cmd, func)
+    assert(cmd ~= nil)
+    assert(func ~= nil)
+    system_call_table[cmd] = func
+end
 
 function system_service.system_call(cmd)
     if cmd == "HELP" then

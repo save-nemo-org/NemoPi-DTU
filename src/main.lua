@@ -26,8 +26,9 @@ end
 -- Enable auto sleep
 -- pm.request(pm.LIGHT)
 
--- Use UTC time 
 rtc.timezone(0)
+socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
+socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"})
 
 local system_service = require("system_service")
 local sms_service = require("sms_service")

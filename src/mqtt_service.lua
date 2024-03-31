@@ -1,17 +1,21 @@
 local mqtt_service = {}
 
-local system_service = require("system_service")
--- mqtt client object 
+local mqtt_state_name = {
+    [mqtt.STATE_DISCONNECT] = "STATE_DISCONNECT",
+    [mqtt.STATE_SCONNECT] = "STATE_SCONNECT",
+    [mqtt.STATE_MQTT] = "STATE_MQTT",
+    [mqtt.STATE_READY] = "STATE_READY"
+}
+
 local mqttc = nil
 
--- Server config 
-local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
-local mqtt_port = 8883
-local mqtt_ssl = {
-    client_cert = io.readFile("/luadb/client.crt"),
-    client_key = io.readFile("/luadb/client.key"),
-    verify = 0
-}
+local system_service = require("system_service")
+system_service.register_system_call("MQTT", function()
+    if mqttc == nil then
+        return "NOT_INITIALISED"
+    end
+    return mqtt_state_name[mqttc:state()]
+end)
 
 -- Some utility function
 local function starts_with(str, start)
@@ -23,9 +27,17 @@ local function ends_with(str, ending)
 end
 
 sys.taskInit(function()
-    -- Print cipher_suites
+    -- log.info("cipher", "suites", json.encode(crypto.cipher_suites()))
     assert(crypto.cipher_suites, "crypto.cipher_suites is not supported in the BSP")
     assert(mqtt, "MQTT is not supported in the BSP")
+
+    local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
+    local mqtt_port = 8883
+    local mqtt_ssl = {
+        client_cert = io.readFile("/luadb/client.crt"),
+        client_key = io.readFile("/luadb/client.key"),
+        verify = 0
+    }
 
     local imei = system_service.system_call("IMEI")
     local client_id = imei
@@ -41,15 +53,6 @@ sys.taskInit(function()
 
     -- Wait for IP Address
     sys.waitUntil("IP_READY")
-
-    -- Print IP
-    log.info("socket", "ip", socket.localIP(socket.LWIP_GP))
-
-    -- Set DNS
-    socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
-
-    -- Update time 
-    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"})
 
     -- Print topic base 
     log.info("mqtt", "pub", pub_topic)
@@ -67,10 +70,9 @@ sys.taskInit(function()
             sys.publish("mqtt_conack")
             sys.publish("SOCKET_ACTIVE", true) -- trigger LED
         elseif event == "recv" then
-            -- log.info("mqtt", "downlink", "topic", topic, "payload", payload)
             sys.publish("mqtt_recv", topic, payload)
         elseif event == "sent" then
-            -- log.info("mqtt", "sent", "pkgid", data)
+
         elseif event == "disconnect" then
             -- 非自动重连时,按需重启mqttc
             -- mqtt_client:connect()

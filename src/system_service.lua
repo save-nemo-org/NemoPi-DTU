@@ -4,6 +4,9 @@ local system_call_table = {
     PING = function()
         return "OK"
     end,
+    ECHO = function(msg)
+        return msg
+    end,
     REBOOT = function()
         sys.timerStart(function()
             rtos.reboot()
@@ -57,7 +60,7 @@ function system_service.register_system_call(cmd, func)
     system_call_table[cmd] = func
 end
 
-function system_service.system_call(cmd)
+function system_service.system_call(cmd, ...)
     if cmd == "HELP" then
         local keys = {}
         for key, _ in pairs(system_call_table) do
@@ -69,7 +72,17 @@ function system_service.system_call(cmd)
     if func == nil then
         return "Unsupported command: " .. cmd
     end
-    return func()
+    return func(...)
+end
+
+function system_service.parse_cmd_args(str)
+    local iter = string.gmatch(str, "%S+")
+    local cmd = iter()
+    local args = {}
+    for arg in iter do
+        table.insert(args, arg)
+    end
+    return cmd, table.unpack(args)
 end
 
 return system_service

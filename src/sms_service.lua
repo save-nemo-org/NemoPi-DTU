@@ -7,7 +7,7 @@ sys.taskInit(function()
         local ret, num, txt, metas = sys.waitUntil("SMS_INC", 300000)
         log.info("sms", ret, num, txt, metas and json.encode(metas) or "")
         if num then
-            local result = system_service.system_call(txt)
+            local result = system_service.system_call(system_service.parse_cmd_args(txt))
             sms.send(num, result, false)
         end
     end

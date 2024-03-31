@@ -93,7 +93,7 @@ sys.taskInit(function()
         local ret, topic, data, qos = sys.waitUntil("mqtt_recv", 60 * 1000)
         if ret then
             if ends_with(topic, "cmd") then
-                local result = system_service.system_call(data)
+                local result = system_service.system_call(system_service.parse_cmd_args(data))
                 mqttc:publish(pub_topic .. "cmd", result, 0)
             end
         end

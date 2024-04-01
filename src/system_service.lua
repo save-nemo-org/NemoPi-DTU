@@ -104,20 +104,20 @@ function system_service.system_call(cb, str)
     end
     -- validate command
     if cmd == nil then
-        cb("Error: empty command")
+        cb("ERROR: EMPTY COMMAND")
         return false
     elseif cmd == "HELP" then
         local keys = {}
         for key, _ in pairs(system_call_table) do
             table.insert(keys, tostring(key))
         end
-        cb("Supported commands: " .. table.concat(keys, ", "))
+        cb("SUPPORTED COMMANDS: " .. table.concat(keys, ", "))
         return true
     end
     -- execute command
     local func = system_call_table[cmd]
     if func == nil then
-        cb("Error: unsupported command: " .. cmd)
+        cb("ERROR: UNSUPPORTED COMMAND: " .. cmd)
         return false
     end
     return func(cb, table.unpack(args))

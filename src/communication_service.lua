@@ -16,7 +16,7 @@ end
 
 -- ######################################### SMS #########################################
 
-sys.subscribe("SMS_INC", function(num, txt, metas)
+sms.setNewSmsCb(function(num, txt, metas)
     local cb = function(msg)
         sms.send(num, msg, false)
     end

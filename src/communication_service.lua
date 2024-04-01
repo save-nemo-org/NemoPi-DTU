@@ -17,8 +17,14 @@ end
 -- ######################################### SMS #########################################
 
 sms.setNewSmsCb(function(num, txt, metas)
-    local cb = function(msg)
-        sms.send(num, msg, false)
+    local cb
+    cb = function(msg)
+        local segment_size = 140
+        local segment = msg:sub(1, segment_size)
+        sms.send(num, segment, false)
+        if #msg > segment_size then
+            sys.timerStart(cb, 1000, msg:sub(segment_size + 1))
+        end
     end
     system_service.system_call(cb, txt)
 end)

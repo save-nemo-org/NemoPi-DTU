@@ -18,8 +18,14 @@ local system_call_table = {
         cb("DEVICE WILL REBOOT IN 60 SECONDS")
         return true
     end,
-    VERSION = function(cb)
-        cb(VERSION)
+    FIRMWARE = function(cb)
+        local result = {
+            ["FIRMWARE"] = rtos.version(),
+            ["FIRMWARE_BUILD_DATE"] = rtos.buildDate(),
+            ["APPLICATION_VERSION"] = VERSION,
+            ["BSP"] = rtos.bsp()
+        }
+        cb(json.encode(result))
         return true
     end,
     MODEM = function(cb)

@@ -39,24 +39,17 @@ local netLed = require("netLed")
 local NETLED_PIN = 27
 netLed.setup(true, NETLED_PIN, nil)
 
--- -- 以下是演示与uart结合, 简单的mqtt-uart透传实现,不需要就注释掉
--- local uart_id = 1
--- uart.setup(uart_id, 9600)
--- uart.on(uart_id, "receive", function(id, len)
---     local data = ""
+-- sys.taskInit(function()
 --     while 1 do
---         local tmp = uart.read(uart_id)
---         if not tmp or #tmp == 0 then
---             break
---         end
---         data = data .. tmp
+--         -- Print mem usage, debug only
+--         sys.wait(10 * 1000)
+
+--         local total_lua, used_lua, max_used_lua = rtos.meminfo("lua")
+--         log.info("lua", used_lua / total_lua, max_used_lua / total_lua)
+
+--         local total_sys, used_sys, max_used_sys = rtos.meminfo("sys")
+--         log.info("sys", used_sys / total_sys, max_used_sys / total_sys)
 --     end
---     log.info("uart", "uart收到数据长度", #data)
---     sys.publish("mqtt_pub", pub_topic, data)
--- end)
--- sys.subscribe("mqtt_payload", function(topic, payload)
---     log.info("uart", "uart发送数据长度", #payload)
---     uart.write(1, payload)
 -- end)
 
 -- End of User Code ---------------------------------------------

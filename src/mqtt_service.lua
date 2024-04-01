@@ -47,8 +47,8 @@ sys.taskInit(function()
     local pub_topic = "/" .. imei .. "/pub/"
     local sub_topic = "/" .. imei .. "/sub/"
     local sub_topic_table = {
-        [sub_topic .. "echo"] = 0,
-        [sub_topic .. "cmd"] = 0
+        [sub_topic .. "cmd"] = 0,
+        [sub_topic .. "uart"] = 0,
     }
 
     -- Wait for IP Address
@@ -95,12 +95,35 @@ sys.taskInit(function()
             if ends_with(topic, "cmd") then
                 local result = system_service.system_call(system_service.parse_cmd_args(data))
                 mqttc:publish(pub_topic .. "cmd", result, 0)
+            elseif ends_with(topic, "uart") then
+                sys.publish("mqtt_to_uart", data)
             end
         end
     end
 
     mqttc:close()
     mqttc = nil
+end)
+
+local uart_id = 1
+uart.setup(uart_id, 115200)
+
+uart.on(uart_id, "receive", function(id, len)
+    local data = ""
+    while 1 do
+        local tmp = uart.read(uart_id)
+        if not tmp or #tmp == 0 then
+            break
+        end
+        data = data .. tmp
+    end
+    log.info("uart", "recv len", #data)
+    -- sys.publish("mqtt_pub", pub_topic, data)
+    log.info("uart", "data", data)
+end)
+
+sys.subscribe("mqtt_to_uart", function(data)
+    uart.write(1, data)
 end)
 
 return mqtt_service

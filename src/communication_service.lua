@@ -14,6 +14,15 @@ local function ends_with(str, ending)
     return ending == "" or str:sub(-#ending) == ending
 end
 
+-- ######################################### SMS #########################################
+
+sys.subscribe("SMS_INC", function(num, txt, metas)
+    local cb = function(msg)
+        sms.send(num, msg, false)
+    end
+    system_service.system_call(cb, txt)
+end)
+
 -- ######################################### MQTT #########################################
 
 local mqttc = nil
@@ -66,7 +75,7 @@ sys.taskInit(function()
     log.info("mqtt", "sub", json.encode(sub_topic_table))
 
     mqttc = mqtt.create(nil, mqtt_host, mqtt_port, mqtt_ssl)
-    mqttc:auth(client_id, user_name, password) -- client_id must have value 
+    mqttc:auth(client_id, user_name, password, true) -- client_id must have value, the last parameter true is for clean session
     mqttc:keepalive(60) -- default value 240s 
     mqttc:autoreconn(true, 3000) -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures 
     -- mqttc:debug(true)
@@ -76,8 +85,17 @@ sys.taskInit(function()
         if event == "conack" then
             sys.publish("mqtt_conack")
             sys.publish("SOCKET_ACTIVE", true) -- trigger LED
+            mqttc:subscribe(sub_topic_table)
+            mqttc:publish(pub_topic .. "telemetry", "Hello from " .. imei .. " on " .. os.date(), 0)
         elseif event == "recv" then
-            sys.publish("mqtt_recv", topic, payload)
+            if ends_with(topic, "cmd") then
+                local cb = function(msg)
+                    mqttc:publish(pub_topic .. "cmd", msg, 0)
+                end
+                system_service.system_call(cb, payload)
+            elseif ends_with(topic, "uart") then
+                sys.publish("mqtt_to_uart", payload)
+            end
         elseif event == "sent" then
 
         elseif event == "disconnect" then
@@ -87,40 +105,7 @@ sys.taskInit(function()
         end
     end)
 
-    -- mqttc自动处理重连, 除非自行关闭
     mqttc:connect()
-    sys.waitUntil("mqtt_conack")
-    mqttc:subscribe(sub_topic_table)
-
-    if mqttc and mqttc:ready() then
-        local pkgid = mqttc:publish(pub_topic .. "telemetry", "message from " .. imei .. " on " .. os.date(), 0)
-    end
-
-    while true do
-        local ret, topic, data, qos = sys.waitUntil("mqtt_recv", 60 * 1000)
-        if ret then
-            if ends_with(topic, "cmd") then
-                local cb = function(msg)
-                    mqttc:publish(pub_topic .. "cmd", msg, 0)
-                end
-                system_service.system_call(cb, data)
-            elseif ends_with(topic, "uart") then
-                sys.publish("mqtt_to_uart", data)
-            end
-        end
-    end
-
-    mqttc:close()
-    mqttc = nil
-end)
-
--- ######################################### SMS #########################################
-
-sys.subscribe("SMS_INC", function(num, txt, metas)
-    local cb = function(msg)
-        sms.send(num, msg, false)
-    end
-    system_service.system_call(cb, txt)
 end)
 
 -- ######################################### UART #########################################

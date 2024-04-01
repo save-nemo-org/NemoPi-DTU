@@ -18,6 +18,56 @@ local system_call_table = {
         cb("DEVICE WILL REBOOT IN 60 SECONDS")
         return true
     end,
+    VERSION = function(cb)
+        cb(VERSION)
+        return true
+    end,
+    MODEM = function(cb)
+        local band = zbuff.create(40)
+        mobile.getBand(band)
+        local bands = {}
+        for i = 0, band:used() - 1 do
+            bands[#bands + 1] = string.format("%d", band[i])
+        end
+        local modem = {
+            ["IMEI"] = mobile.imei(),
+            ["NUMBER"] = mobile.number() or "",
+            ["BAND"] = table.concat(bands, ",")
+        }
+        cb(json.encode(modem))
+        return true
+    end,
+    CELL = function(cb)
+        mobile.reqCellInfo(15)
+        sys.taskInit(function()
+            sys.waitUntil("CELL_INFO_UPDATE", 15 * 1000)
+            cb(json.encode(mobile.getCellInfo()))
+        end)
+        return true
+    end,
+    SOCKET = function(cb)
+        local result = {
+            ["READY"] = socket.adapter(socket.LWIP_GP),
+            ["IP"] = string.format("%s %s %s", socket.localIP(socket.LWIP_GP))
+        }
+        cb(json.encode(result))
+        return true
+    end,
+    OTA = function(cb, ota_url)
+        function fota_cb(ret)
+            if ret == 0 then
+                cb("OTA COMPLETE, DEVICE WILL REBOOT IN 10 SECONDS")
+                sys.timerStart(function()
+                    rtos.reboot()
+                end, 10 * 1000)
+            else
+                cb("OTA FAILED, ERROR CODE " .. tostring(ret))
+            end
+        end
+        libfota.request(fota_cb, ota_url)
+        cb("START OTA FROM URL " .. ota_url)
+        return true
+    end,
     MEM = function(cb)
         local lua_total, lua_used, lua_max_used = rtos.meminfo("lua")
         local sys_total, sys_used, sys_max_used = rtos.meminfo("sys")
@@ -34,44 +84,6 @@ local system_call_table = {
             ["sys_max_used_presentage"] = sys_max_used / lua_total
         }
         cb(json.encode(mem))
-        return true
-    end,
-    MOBILE = function(cb)
-        local band = zbuff.create(40)
-        mobile.getBand(band)
-        local bands = {}
-        for i = 0, band:used() - 1 do
-            bands[#bands + 1] = string.format("%d", band[i])
-        end
-        local modem = {
-            ["IMEI"] = mobile.imei(),
-            ["NUMBER"] = mobile.number(),
-            ["BAND"] = table.concat(bands, ",")
-        }
-        cb(json.encode(modem))
-        return true
-    end,
-    CELL = function(cb)
-        mobile.reqCellInfo(15)
-        sys.taskInit(function()
-            sys.waitUntil("CELL_INFO_UPDATE", 15 * 1000)
-            cb(json.encode(mobile.getCellInfo()))
-        end)
-        return true
-    end,
-    OTA = function(cb, ota_url)
-        function fota_cb(ret)
-            if ret == 0 then
-                cb("OTA COMPLETE, DEVICE WILL REBOOT IN 10 SECONDS")
-                sys.timerStart(function()
-                    rtos.reboot()
-                end, 10 * 1000)
-            else
-                cb("OTA FAILED, ERROR CODE " .. tostring(ret))
-            end
-        end
-        libfota.request(fota_cb, ota_url)
-        cb("START OTA FROM URL " .. ota_url)
         return true
     end
 }
@@ -102,8 +114,7 @@ function system_service.system_call(cb, str)
         cb("Error: unsupported command: " .. cmd)
         return false
     end
-    func(cb, table.unpack(args))
-    return true
+    return func(cb, table.unpack(args))
 end
 
 function system_service.register_system_call(cmd, func)

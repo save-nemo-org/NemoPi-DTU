@@ -3,19 +3,22 @@ local system_service = {}
 local libfota = require("libfota")
 
 local system_call_table = {
-    PING = function()
-        return "OK"
+    PING = function(cb)
+        cb("OK")
+        return true
     end,
-    ECHO = function(msg)
-        return msg
+    ECHO = function(cb, msg)
+        cb(msg)
+        return true
     end,
-    REBOOT = function()
+    REBOOT = function(cb)
         sys.timerStart(function()
             rtos.reboot()
         end, 60 * 1000)
-        return "DEVICE WILL REBOOT IN 60 SECONDS"
+        cb("DEVICE WILL REBOOT IN 60 SECONDS")
+        return true
     end,
-    MEM = function()
+    MEM = function(cb)
         local lua_total, lua_used, lua_max_used = rtos.meminfo("lua")
         local sys_total, sys_used, sys_max_used = rtos.meminfo("sys")
         local mem = {
@@ -30,12 +33,10 @@ local system_call_table = {
             ["sys_used_presentage"] = sys_used / lua_total,
             ["sys_max_used_presentage"] = sys_max_used / lua_total
         }
-        return json.encode(mem)
+        cb(json.encode(mem))
+        return true
     end,
-    IMEI = function()
-        return mobile.imei()
-    end,
-    MOBILE = function()
+    MOBILE = function(cb)
         local band = zbuff.create(40)
         mobile.getBand(band)
         local bands = {}
@@ -47,57 +48,68 @@ local system_call_table = {
             ["NUMBER"] = mobile.number(),
             ["BAND"] = table.concat(bands, ",")
         }
-        return json.encode(modem)
+        cb(json.encode(modem))
+        return true
     end,
-    CELL = function()
+    CELL = function(cb)
         mobile.reqCellInfo(15)
-        sys.waitUntil("CELL_INFO_UPDATE", 15000) -- wait up to 15s
-        return json.encode(mobile.getCellInfo())
+        sys.taskInit(function()
+            sys.waitUntil("CELL_INFO_UPDATE", 15 * 1000)
+            cb(json.encode(mobile.getCellInfo()))
+        end)
+        return true
     end,
-    OTA = function(ota_url)
+    OTA = function(cb, ota_url)
         function fota_cb(ret)
-            log.info("fota", ret)
             if ret == 0 then
-                rtos.reboot()
+                cb("OTA COMPLETE, DEVICE WILL REBOOT IN 10 SECONDS")
+                sys.timerStart(function()
+                    rtos.reboot()
+                end, 10 * 1000)
+            else
+                cb("OTA FAILED, ERROR CODE " .. tostring(ret))
             end
         end
         libfota.request(fota_cb, ota_url)
-        return "OTA from " .. ota_url
+        cb("START OTA FROM URL " .. ota_url)
+        return true
     end
 }
 
-function system_service.register_system_call(cmd, func)
-    assert(cmd ~= nil)
-    assert(func ~= nil)
-    system_call_table[cmd] = func
-end
-
-function system_service.system_call(cmd, ...)
-    if cmd == nil then
-        return "Error: empty command"
-    end
-    if cmd == "HELP" then
-        local keys = {}
-        for key, _ in pairs(system_call_table) do
-            table.insert(keys, tostring(key))
-        end
-        return "Supported commands: " .. table.concat(keys, ", ")
-    end
-    local func = system_call_table[cmd]
-    if func == nil then
-        return "Error: unsupported command: " .. cmd
-    end
-    return func(...)
-end
-
-function system_service.parse_cmd_args(str)
+function system_service.system_call(cb, str)
+    -- parse str into cmd and args
     local iter = string.gmatch(str, "%S+")
     local cmd = iter()
     local args = {}
     for arg in iter do
         table.insert(args, arg)
     end
-    return cmd, table.unpack(args)
+    -- validate command
+    if cmd == nil then
+        cb("Error: empty command")
+        return false
+    elseif cmd == "HELP" then
+        local keys = {}
+        for key, _ in pairs(system_call_table) do
+            table.insert(keys, tostring(key))
+        end
+        cb("Supported commands: " .. table.concat(keys, ", "))
+        return true
+    end
+    -- execute command
+    local func = system_call_table[cmd]
+    if func == nil then
+        cb("Error: unsupported command: " .. cmd)
+        return false
+    end
+    func(cb, table.unpack(args))
+    return true
+end
+
+function system_service.register_system_call(cmd, func)
+    assert(cmd ~= nil)
+    assert(func ~= nil)
+    system_call_table[cmd] = func
 end
 
 return system_service

@@ -1,23 +1,11 @@
-local mqtt_service = {}
+local communication_service = {}
 
-local mqtt_state_name = {
-    [mqtt.STATE_DISCONNECT] = "STATE_DISCONNECT",
-    [mqtt.STATE_SCONNECT] = "STATE_SCONNECT",
-    [mqtt.STATE_MQTT] = "STATE_MQTT",
-    [mqtt.STATE_READY] = "STATE_READY"
-}
-
-local mqttc = nil
+-- ######################################### INCLUDES #########################################
 
 local system_service = require("system_service")
-system_service.register_system_call("MQTT", function()
-    if mqttc == nil then
-        return "NOT_INITIALISED"
-    end
-    return mqtt_state_name[mqttc:state()]
-end)
 
--- Some utility function
+-- ######################################### HELPER FUNCTIONS #########################################
+
 local function starts_with(str, start)
     return str:sub(1, #start) == start
 end
@@ -25,6 +13,25 @@ end
 local function ends_with(str, ending)
     return ending == "" or str:sub(-#ending) == ending
 end
+
+-- ######################################### MQTT #########################################
+
+local mqttc = nil
+
+system_service.register_system_call("MQTT", function(cb)
+    if mqttc == nil then
+        cb("NOT_INITIALISED")
+    else
+        local mqtt_state_name = {
+            [mqtt.STATE_DISCONNECT] = "STATE_DISCONNECT",
+            [mqtt.STATE_SCONNECT] = "STATE_SCONNECT",
+            [mqtt.STATE_MQTT] = "STATE_MQTT",
+            [mqtt.STATE_READY] = "STATE_READY"
+        }
+        cb(mqtt_state_name[mqttc:state()])
+    end
+    return true
+end)
 
 sys.taskInit(function()
     -- log.info("cipher", "suites", json.encode(crypto.cipher_suites()))
@@ -39,7 +46,7 @@ sys.taskInit(function()
         verify = 0
     }
 
-    local imei = system_service.system_call("IMEI")
+    local imei = mobile.imei()
     local client_id = imei
     local user_name = "client"
     local password = ""
@@ -48,7 +55,7 @@ sys.taskInit(function()
     local sub_topic = "/" .. imei .. "/sub/"
     local sub_topic_table = {
         [sub_topic .. "cmd"] = 0,
-        [sub_topic .. "uart"] = 0,
+        [sub_topic .. "uart"] = 0
     }
 
     -- Wait for IP Address
@@ -93,8 +100,10 @@ sys.taskInit(function()
         local ret, topic, data, qos = sys.waitUntil("mqtt_recv", 60 * 1000)
         if ret then
             if ends_with(topic, "cmd") then
-                local result = system_service.system_call(system_service.parse_cmd_args(data))
-                mqttc:publish(pub_topic .. "cmd", result, 0)
+                local cb = function(msg)
+                    mqttc:publish(pub_topic .. "cmd", msg, 0)
+                end
+                system_service.system_call(cb, data)
             elseif ends_with(topic, "uart") then
                 sys.publish("mqtt_to_uart", data)
             end
@@ -104,6 +113,17 @@ sys.taskInit(function()
     mqttc:close()
     mqttc = nil
 end)
+
+-- ######################################### SMS #########################################
+
+sys.subscribe("SMS_INC", function(num, txt, metas)
+    local cb = function(msg)
+        sms.send(num, msg, false)
+    end
+    system_service.system_call(cb, txt)
+end)
+
+-- ######################################### UART #########################################
 
 local uart_id = 1
 uart.setup(uart_id, 115200)
@@ -126,4 +146,4 @@ sys.subscribe("mqtt_to_uart", function(data)
     uart.write(1, data)
 end)
 
-return mqtt_service
+return communication_service

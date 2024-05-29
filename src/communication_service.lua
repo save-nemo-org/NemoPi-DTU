@@ -70,7 +70,6 @@ sys.taskInit(function()
     local sub_topic = "/" .. imei .. "/sub/"
     local sub_topic_table = {
         [sub_topic .. "cmd"] = 0,
-        [sub_topic .. "uart"] = 0
     }
 
     -- Wait for IP Address
@@ -99,8 +98,6 @@ sys.taskInit(function()
                     mqttc:publish(pub_topic .. "cmd", msg, 0)
                 end
                 system_service.system_call(cb, payload)
-            elseif ends_with(topic, "uart") then
-                sys.publish("mqtt_to_uart", payload)
             end
         elseif event == "sent" then
 
@@ -114,27 +111,105 @@ sys.taskInit(function()
     mqttc:connect()
 end)
 
--- ######################################### UART #########################################
+local function modbus_send(uart_id, slaveaddr, instruction, regaddr, value)
+    local data =
+        (string.format("%02x", slaveaddr) .. string.format("%02x", instruction) .. string.format("%04x", regaddr) ..
+            string.format("%04x", value)):fromHex()
+    local crc_data = pack.pack("<H", crypto.crc16("MODBUS", data))
+    local data_tx = data .. crc_data
+    log.debug("modbus", "send", "data", data_tx:toHex())
+    uart.write(uart_id, data_tx)
+end
 
-local uart_id = 1
-uart.setup(uart_id, 115200)
-
-uart.on(uart_id, "receive", function(id, len)
-    local data = ""
-    while 1 do
-        local tmp = uart.read(uart_id)
-        if not tmp or #tmp == 0 then
-            break
-        end
-        data = data .. tmp
+local function modbus_read(uart_id)
+    local len = uart.rxSize(uart_id)
+    local data = uart.read(uart_id, len)
+    log.debug("modbus", "recv", "len", len, "data", data:toHex())
+    
+    if len < 3 then
+        log.error("modbus", "modbus frame too short ", len)
+        return false
     end
-    log.info("uart", "recv len", #data)
-    -- sys.publish("mqtt_pub", pub_topic, data)
-    log.info("uart", "data", data)
-end)
 
-sys.subscribe("mqtt_to_uart", function(data)
-    uart.write(1, data)
+    local _, slaveaddr, instruction, size = pack.unpack(data, "<bbb")
+    if len < 3 + size + 2 then -- slave_addr, instruction, length, [length], crc, crc
+        log.error("modbus", "modbus frame too short ", len)
+        return false
+    end
+
+    local _, crc = pack.unpack(data:sub(3 + size + 1, 3 + size + 1 + 2), "<H")
+    local calculated_crc = crypto.crc16("MODBUS", data:sub(1, 3 + size))
+    if calculated_crc ~= crc then
+        log.error("modbus", "incorrect crc", "calculated", calculated_crc, "given", crc)
+        return false
+    end
+
+    data = data:sub(4, 3 + size) -- data slice
+    log.debug("modbus", "recv", "unpack", "slaveaddr", slaveaddr, "instruction", instruction, "size", size)
+    
+    return true, slaveaddr, instruction, size, data
+end
+
+local function modbus_read_input_register_16(uart_id, slave, reg, len)
+    -- clear rx buffer 
+    uart.rxClear(uart_id) 
+    -- send command 
+    modbus_send(uart_id, slave, 0x04, reg, len)
+    -- wait for process complete
+    sys.wait(1000)
+    -- read result 
+    local ret, slaveaddr, instruction, size, data = modbus_read(uart_id)
+    if not ret then
+        return false
+    end
+    -- unpack big endian
+    if type(size) ~= "number" or size < 0 or size ~= math.floor(size) or size %2 ~= 0 then
+        log.error("modbus", "read_input_register_16", "invalid data length", size)
+        return false
+    end
+    local result = {select(2, pack.unpack(data, ">H" .. size/2))}
+
+    return true, result
+end
+
+sys.taskInit(function()
+    local UART_ID = 1
+    local VPCB_GPIO = 22 -- RS485 和ADC 运放电源
+    local VOUT_GPIO = 24
+    local RS485_EN_GPIO = 25
+
+    -- config power output gpio
+    gpio.setup(VPCB_GPIO, 0, gpio.PULLUP) -- enable PCB resource power 
+    gpio.setup(VOUT_GPIO, 0, gpio.PULLUP) -- enable power output
+
+    uart.setup(UART_ID, 9600, 8, 1, uart.NONE, uart.LSB, 1024, RS485_EN_GPIO, 0, 5000)  -- tx/rx switching delay: 20000 for 9600
+    uart.on(UART_ID, "sent", uart.wait485)
+
+    sys.wait(100)
+
+    -- turn on internal power 
+    gpio.set(VPCB_GPIO, 1)
+    
+    while 1 do
+        
+        gpio.set(VOUT_GPIO, 1)
+
+        sys.wait(2000)
+
+        local ret, result = modbus_read_input_register_16(UART_ID, 0x01, 0x00, 0x04)
+        if ret then
+            for key, value in pairs(result) do
+                print(key, value)
+            end
+        end
+
+        gpio.set(VOUT_GPIO, 0)
+
+        sys.wait(2000)
+        -- modbus_read_input_register_16(UART_ID, 0x01, 0x00, 0x02)
+        -- sys.wait(2000)
+    end
+
 end)
 
 return communication_service

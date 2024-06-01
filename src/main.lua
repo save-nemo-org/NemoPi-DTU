@@ -11,6 +11,8 @@ _G.sys = require("sys")
 -- MQTT application need this lib 
 _G.sysplus = require("sysplus")
 
+-- log.setLevel(log.LOG_INFO)
+
 -- Air780E的AT固件默认会为开机键防抖, 导致部分用户刷机很麻烦
 -- Disable power key debouncing 
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then

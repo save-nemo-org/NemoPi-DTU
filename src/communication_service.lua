@@ -3,6 +3,7 @@ local communication_service = {}
 -- ######################################### INCLUDES #########################################
 
 local system_service = require("system_service")
+local modbus = require("modbus")
 
 -- ######################################### HELPER FUNCTIONS #########################################
 
@@ -111,134 +112,6 @@ sys.taskInit(function()
     mqttc:connect()
 end)
 
-local function modbus_send(uart_id, slaveaddr, instruction, regaddr, value)
-    local data =
-        (string.format("%02x", slaveaddr) .. string.format("%02x", instruction) .. string.format("%04x", regaddr) ..
-            string.format("%04x", value)):fromHex()
-    local crc_data = pack.pack("<H", crypto.crc16("MODBUS", data))
-    local data_tx = data .. crc_data
-    log.debug("modbus", "send", "data", data_tx:toHex())
-    uart.write(uart_id, data_tx)
-end
-
-local function modbus_read(uart_id, expected_slaveaddr, expected_instruction)
-    local len = uart.rxSize(uart_id)
-    local data = uart.read(uart_id, len)
-    log.debug("modbus", "recv", "len", len, "data", data:toHex())
-    
-    if len < 3 then
-        log.error("modbus", "modbus frame too short", len)
-        return false
-    end
-
-    local _, slaveaddr, instruction, size = pack.unpack(data, "<bbb")
-    if expected_slaveaddr ~= slaveaddr then
-        log.error("modbus", "incorrect slave addr", "expected", expected_slaveaddr, "received", slaveaddr)
-        return false
-    end
-    if expected_instruction ~= instruction then
-        log.error("modbus", "incorrect instruction", "expected", expected_instruction, "received", instruction)
-        return false
-    end
-    if len < 3 + size + 2 then -- slave_addr, instruction, length, [length], crc, crc
-        log.error("modbus", "modbus frame too short", len)
-        return false
-    end
-
-    local _, crc = pack.unpack(data:sub(3 + size + 1, 3 + size + 1 + 2), "<H")
-    local calculated_crc = crypto.crc16("MODBUS", data:sub(1, 3 + size))
-    if calculated_crc ~= crc then
-        log.error("modbus", "incorrect crc", "calculated", calculated_crc, "given", crc)
-        return false
-    end
-
-    data = data:sub(4, 3 + size) -- data slice
-    log.debug("modbus", "recv", "unpack", "slaveaddr", slaveaddr, "instruction", instruction, "size", size)
-    
-    return true, slaveaddr, instruction, size, data
-end
-  
-local function modbus_read_input_register_16(uart_id, slave, reg, len)
-    -- clear rx buffer 
-    uart.rxClear(uart_id) 
-    -- send command 
-    modbus_send(uart_id, slave, 0x04, reg, len)
-    -- wait for process complete
-    sys.wait(1000)
-    -- read result 
-    local ret, slaveaddr, instruction, size, data = modbus_read(uart_id, slave, 0x04)
-    if not ret then
-        log.error("modbus", "read_input_register_16", "failed to read modbus")
-        return false
-    end
-    -- unpack big endian
-    if type(size) ~= "number" or size < 0 or size ~= math.floor(size) or size %2 ~= 0 then
-        log.error("modbus", "read_input_register_16", "invalid data length", size)
-        return false
-    end
-    local result = {select(2, pack.unpack(data, ">H" .. size/2))}
-
-    return true, result
-end
-
-local function modbus_read_holding_register_16(uart_id, slave, reg, len)
-    -- clear rx buffer 
-    uart.rxClear(uart_id) 
-    -- send command 
-    modbus_send(uart_id, slave, 0x03, reg, len)
-    -- wait for process complete
-    sys.wait(1000)
-    -- read result 
-    local ret, slaveaddr, instruction, size, data = modbus_read(uart_id, slave, 0x03)
-    if not ret then
-        log.error("modbus", "read_holding_register_16", "failed to read modbus")
-        return false
-    end
-    return true, size, data
-end
-
-local function modbus_read_gps(uart_id)
-    local ret, size, data
-    -- GPS validity
-    ret, size, data = modbus_read_holding_register_16(uart_id, 0x01, 0xC8, 0x0D) -- 26 bytes
-    if not ret then
-        log.error("modbus", "read_gps", "failed to read gps validity register")
-        return false
-    end
-    assert(size == 26)
-
-    local gps_valid, _, _, _, _, _, _, lon_dir, lon, lat_dir, lat = select(2, pack.unpack(data, ">h7hfhf"))
-    if gps_valid ~= 1 then
-        log.error("modbus", "read_gps", "gps invalid")
-        return false
-    end
-    if lon_dir ~= 0x45 and lon_dir ~= 0x57 then
-        log.error("modbus", "read_gps", "invalid gps longitude direction")
-        return false
-    end
-    if lat_dir ~= 0x4E and lat_dir ~= 0x53 then
-        log.error("modbus", "read_gps", "invalid gps longitude direction")
-        return false
-    end
-    if lon_dir == 0x57 then
-        lon = lon * -1
-    end
-    if lat_dir == 0x53 then
-        lat = lat * -1
-    end
-    log.info("modbus", "read_gps", "lat", lat, "lon", lon)
-end
-
-local function modbus_read_ds18b20(uart_id)
-    -- read ds18b20 temperature 
-    local ret, result = modbus_read_input_register_16(uart_id, 0x01, 0x00, 0x08)
-    if ret then
-        for key, value in pairs(result) do
-            print(key, value)
-        end
-    end
-end
-
 sys.taskInit(function()
     local UART_ID = 1
     local VPCB_GPIO = 22 -- RS485 和ADC 运放电源
@@ -264,7 +137,8 @@ sys.taskInit(function()
 
         sys.wait(2000)
 
-        modbus_read_gps(UART_ID)
+        modbus.modbus_read_gps(UART_ID)
+        modbus.modbus_read_ds18b20(UART_ID)
 
         sys.wait(2000)
         -- modbus_read_input_register_16(UART_ID, 0x01, 0x00, 0x02)

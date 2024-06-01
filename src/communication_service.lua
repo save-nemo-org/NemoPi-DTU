@@ -121,19 +121,27 @@ local function modbus_send(uart_id, slaveaddr, instruction, regaddr, value)
     uart.write(uart_id, data_tx)
 end
 
-local function modbus_read(uart_id)
+local function modbus_read(uart_id, expected_slaveaddr, expected_instruction)
     local len = uart.rxSize(uart_id)
     local data = uart.read(uart_id, len)
     log.debug("modbus", "recv", "len", len, "data", data:toHex())
     
     if len < 3 then
-        log.error("modbus", "modbus frame too short ", len)
+        log.error("modbus", "modbus frame too short", len)
         return false
     end
 
     local _, slaveaddr, instruction, size = pack.unpack(data, "<bbb")
+    if expected_slaveaddr ~= slaveaddr then
+        log.error("modbus", "incorrect slave addr", "expected", expected_slaveaddr, "received", slaveaddr)
+        return false
+    end
+    if expected_instruction ~= instruction then
+        log.error("modbus", "incorrect instruction", "expected", expected_instruction, "received", instruction)
+        return false
+    end
     if len < 3 + size + 2 then -- slave_addr, instruction, length, [length], crc, crc
-        log.error("modbus", "modbus frame too short ", len)
+        log.error("modbus", "modbus frame too short", len)
         return false
     end
 
@@ -149,7 +157,7 @@ local function modbus_read(uart_id)
     
     return true, slaveaddr, instruction, size, data
 end
-
+  
 local function modbus_read_input_register_16(uart_id, slave, reg, len)
     -- clear rx buffer 
     uart.rxClear(uart_id) 
@@ -158,8 +166,9 @@ local function modbus_read_input_register_16(uart_id, slave, reg, len)
     -- wait for process complete
     sys.wait(1000)
     -- read result 
-    local ret, slaveaddr, instruction, size, data = modbus_read(uart_id)
+    local ret, slaveaddr, instruction, size, data = modbus_read(uart_id, slave, 0x04)
     if not ret then
+        log.error("modbus", "read_input_register_16", "failed to read modbus")
         return false
     end
     -- unpack big endian
@@ -170,6 +179,73 @@ local function modbus_read_input_register_16(uart_id, slave, reg, len)
     local result = {select(2, pack.unpack(data, ">H" .. size/2))}
 
     return true, result
+end
+
+local function modbus_read_holding_register_16(uart_id, slave, reg, len)
+    -- clear rx buffer 
+    uart.rxClear(uart_id) 
+    -- send command 
+    modbus_send(uart_id, slave, 0x03, reg, len)
+    -- wait for process complete
+    sys.wait(1000)
+    -- read result 
+    local ret, slaveaddr, instruction, size, data = modbus_read(uart_id, slave, 0x03)
+    if not ret then
+        log.error("modbus", "read_holding_register_16", "failed to read modbus")
+        return false
+    end
+    return true, size, data
+end
+
+local function modbus_read_gps(uart_id)
+    local ret, size, data
+    -- GPS validity
+    ret, size, data = modbus_read_holding_register_16(uart_id, 0x01, 0xC8, 0x01)
+    if not ret then
+        log.error("modbus", "read_gps", "failed to read gps validity register")
+        return false
+    end
+    assert(size == 2)
+
+    local gps_valid = select(2, pack.unpack(data, ">h"))
+    if gps_valid ~= 1 then
+        log.error("modbus", "read_gps", "gps invalid")
+        return false
+    end
+    log.info("modbus", "read_gps", "gps valid")
+    
+    ret, size, data = modbus_read_holding_register_16(uart_id, 0x01, 0xCF, 0x06)    -- 6 bytes
+    if not ret then
+        log.error("modbus", "read_gps", "failed to read gps coordinates")
+        return false
+    end
+    assert(size == 12)
+    local lon_dir, lon, lat_dir, lat = select(2, pack.unpack(data, ">hfhf"))
+    if lon_dir ~= 0x45 and lon_dir ~= 0x57 then
+        log.error("modbus", "read_gps", "invalid gps longitude direction")
+        return false
+    end
+    if lat_dir ~= 0x4E and lat_dir ~= 0x53 then
+        log.error("modbus", "read_gps", "invalid gps longitude direction")
+        return false
+    end
+    if lon_dir == 0x57 then
+        lon = lon * -1
+    end
+    if lat_dir == 0x53 then
+        lat = lat * -1
+    end
+    log.info("modbus", "read_gps", "lat", lat, "lon", lon)
+end
+
+local function modbus_read_ds18b20(uart_id)
+    -- read ds18b20 temperature 
+    local ret, result = modbus_read_input_register_16(uart_id, 0x01, 0x00, 0x08)
+    if ret then
+        for key, value in pairs(result) do
+            print(key, value)
+        end
+    end
 end
 
 sys.taskInit(function()
@@ -189,21 +265,15 @@ sys.taskInit(function()
 
     -- turn on internal power 
     gpio.set(VPCB_GPIO, 1)
+
+    -- turn on power output
+    gpio.set(VOUT_GPIO, 1)
     
     while 1 do
-        
-        gpio.set(VOUT_GPIO, 1)
 
         sys.wait(2000)
 
-        local ret, result = modbus_read_input_register_16(UART_ID, 0x01, 0x00, 0x04)
-        if ret then
-            for key, value in pairs(result) do
-                print(key, value)
-            end
-        end
-
-        gpio.set(VOUT_GPIO, 0)
+        modbus_read_gps(UART_ID)
 
         sys.wait(2000)
         -- modbus_read_input_register_16(UART_ID, 0x01, 0x00, 0x02)

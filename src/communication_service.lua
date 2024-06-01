@@ -200,27 +200,18 @@ end
 local function modbus_read_gps(uart_id)
     local ret, size, data
     -- GPS validity
-    ret, size, data = modbus_read_holding_register_16(uart_id, 0x01, 0xC8, 0x01)
+    ret, size, data = modbus_read_holding_register_16(uart_id, 0x01, 0xC8, 0x0D) -- 26 bytes
     if not ret then
         log.error("modbus", "read_gps", "failed to read gps validity register")
         return false
     end
-    assert(size == 2)
+    assert(size == 26)
 
-    local gps_valid = select(2, pack.unpack(data, ">h"))
+    local gps_valid, _, _, _, _, _, _, lon_dir, lon, lat_dir, lat = select(2, pack.unpack(data, ">h7hfhf"))
     if gps_valid ~= 1 then
         log.error("modbus", "read_gps", "gps invalid")
         return false
     end
-    log.info("modbus", "read_gps", "gps valid")
-    
-    ret, size, data = modbus_read_holding_register_16(uart_id, 0x01, 0xCF, 0x06)    -- 6 bytes
-    if not ret then
-        log.error("modbus", "read_gps", "failed to read gps coordinates")
-        return false
-    end
-    assert(size == 12)
-    local lon_dir, lon, lat_dir, lat = select(2, pack.unpack(data, ">hfhf"))
     if lon_dir ~= 0x45 and lon_dir ~= 0x57 then
         log.error("modbus", "read_gps", "invalid gps longitude direction")
         return false

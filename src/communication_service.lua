@@ -122,7 +122,7 @@ sys.taskInit(function()
 
     while 1 do
 
-        modbus.modbus_read_gps()
+        modbus.modbus_try_read_gps_or_timeout(120)
         modbus.modbus_read_ds18b20()
         modbus.modbus_read_adc()
 

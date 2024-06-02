@@ -117,6 +117,27 @@ function modbus.modbus_read_gps()
         lat = lat * -1
     end
     log.info("modbus", "read_gps", "lat", lat, "lon", lon)
+    return true, {lat = lat, lon = lon}
+end
+
+function modbus.modbus_try_read_gps_or_timeout(attempts)
+    -- default to 60 attempts
+    if not attempts then
+        attempts = 60
+    end
+    local attempt = 0
+    while attempt < attempts do
+        attempt = attempt + 1
+        log.debug("modbus", "try_read_gps_or_timeout", "attempt", attempt)
+        local ret, lat_lon = modbus.modbus_read_gps()
+        if ret then
+            log.info("modbus", "try_read_gps_or_timeout", "lat", lat_lon["lat"], "lon", lat_lon["lon"])
+            return true, lat_lon
+        end
+        sys.wait(2000)
+    end
+    log.error("modbus", "try_read_gps_or_timeout", "timeout")
+    return false
 end
 
 function modbus.modbus_read_ds18b20()

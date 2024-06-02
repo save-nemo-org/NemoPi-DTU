@@ -113,36 +113,20 @@ sys.taskInit(function()
 end)
 
 sys.taskInit(function()
-    local UART_ID = 1
-    local VPCB_GPIO = 22 -- RS485 和ADC 运放电源
-    local VOUT_GPIO = 24
-    local RS485_EN_GPIO = 25
-
-    -- config power output gpio
-    gpio.setup(VPCB_GPIO, 0, gpio.PULLUP) -- enable PCB resource power 
-    gpio.setup(VOUT_GPIO, 0, gpio.PULLUP) -- enable power output
-
-    uart.setup(UART_ID, 9600, 8, 1, uart.NONE, uart.LSB, 1024, RS485_EN_GPIO, 0, 5000)  -- tx/rx switching delay: 20000 for 9600
-    uart.on(UART_ID, "sent", uart.wait485)
-
+    
+    modbus.setup_modbus()
     sys.wait(100)
 
-    -- turn on internal power 
-    gpio.set(VPCB_GPIO, 1)
+    modbus.enable_modbus()
+    sys.wait(2000)
 
-    -- turn on power output
-    gpio.set(VOUT_GPIO, 1)
-    
     while 1 do
+        
+        modbus.modbus_read_gps()
+        modbus.modbus_read_ds18b20()
+        modbus.modbus_read_adc()
 
         sys.wait(2000)
-
-        modbus.modbus_read_gps(UART_ID)
-        modbus.modbus_read_ds18b20(UART_ID)
-
-        sys.wait(2000)
-        -- modbus_read_input_register_16(UART_ID, 0x01, 0x00, 0x02)
-        -- sys.wait(2000)
     end
 
 end)

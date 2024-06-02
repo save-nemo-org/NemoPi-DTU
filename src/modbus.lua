@@ -1,5 +1,11 @@
 local modbus = {}
 
+local UART_ID = 1
+local RS485_EN_GPIO = 25
+local ADC_ID = 0
+local VPCB_GPIO = 22 -- internal power to RS485 and ADC
+local VOUT_GPIO = 24 -- power output
+
 function modbus.modbus_send(uart_id, slaveaddr, instruction, regaddr, value)
     local data =
         (string.format("%02x", slaveaddr) .. string.format("%02x", instruction) .. string.format("%04x", regaddr) ..
@@ -80,8 +86,8 @@ function modbus.modbus_read_register(uart_id, slave, instruction, reg, len)
     return true, size, data
 end
 
-function modbus.modbus_read_gps(uart_id)
-    local ret, size, data = modbus.modbus_read_register(uart_id, 0x01, 0x03, 0xC8, 0x0D) -- 13 words, 26 bytes
+function modbus.modbus_read_gps()
+    local ret, size, data = modbus.modbus_read_register(UART_ID, 0x01, 0x03, 0xC8, 0x0D) -- 13 words, 26 bytes
     if not ret then
         log.error("modbus", "read_gps", "failed to read gps")
         return false
@@ -113,9 +119,9 @@ function modbus.modbus_read_gps(uart_id)
     log.info("modbus", "read_gps", "lat", lat, "lon", lon)
 end
 
-function modbus.modbus_read_ds18b20(uart_id)
+function modbus.modbus_read_ds18b20()
     -- read ds18b20 temperature 
-    local ret, size, data = modbus.modbus_read_register(uart_id, 0x02, 0x04, 0x10, 0x02)
+    local ret, size, data = modbus.modbus_read_register(UART_ID, 0x02, 0x04, 0x10, 0x02)
     if not ret then
         log.error("modbus", "read_ds18b20", "failed to read ds18b20 data logger")
         return false
@@ -133,6 +139,37 @@ function modbus.modbus_read_ds18b20(uart_id)
             log.info("modbus", "read_ds18b20", "index", key, "temperature", value / 10)
         end
     end
+end
+
+function modbus.modbus_read_adc()
+    local voltage = adc.get(ADC_ID)*3300/103300
+    log.info("modbus", "adc", ADC_ID, "voltage", voltage)
+end
+
+function modbus.setup_modbus()
+    gpio.setup(VPCB_GPIO, 0, gpio.PULLUP) -- configure internal power control gpio
+    gpio.setup(VOUT_GPIO, 0, gpio.PULLUP) -- configure power output control gpio
+
+    -- configure external voltage sensoring adc
+    adc.setRange(adc.ADC_RANGE_3_8)
+end
+
+function modbus.enable_modbus()
+    uart.setup(UART_ID, 9600, 8, 1, uart.NONE, uart.LSB, 1024, RS485_EN_GPIO, 0, 5000)  -- tx/rx switching delay: 20000 for 9600
+    uart.on(UART_ID, "sent", uart.wait485)
+
+    adc.open(ADC_ID)
+
+    gpio.set(VPCB_GPIO, 1) -- turn on internal power 
+    gpio.set(VOUT_GPIO, 1) -- turn on power output
+end
+
+function modbus.disable_modbus()
+    gpio.set(VOUT_GPIO, 0) -- turn off power output
+    gpio.set(VPCB_GPIO, 0) -- turn off internal power 
+
+    adc.close(ADC_ID)
+    uart.close(UART_ID)
 end
 
 return modbus

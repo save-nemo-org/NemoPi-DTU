@@ -6,7 +6,7 @@ local ADC_ID = 0
 local VPCB_GPIO = 22 -- internal power to RS485 and ADC
 local VOUT_GPIO = 24 -- power output
 
-function modbus.modbus_send(uart_id, slaveaddr, instruction, regaddr, value)
+local function modbus_send(uart_id, slaveaddr, instruction, regaddr, value)
     local data =
         (string.format("%02x", slaveaddr) .. string.format("%02x", instruction) .. string.format("%04x", regaddr) ..
             string.format("%04x", value)):fromHex()
@@ -16,7 +16,7 @@ function modbus.modbus_send(uart_id, slaveaddr, instruction, regaddr, value)
     uart.write(uart_id, data_tx)
 end
 
-function modbus.modbus_recv(uart_id, expected_slaveaddr, expected_instruction)
+local function modbus_recv(uart_id, expected_slaveaddr, expected_instruction)
     local len = uart.rxSize(uart_id)
     local data = uart.read(uart_id, len)
     log.debug("modbus", "recv", "len", len, "data", data:toHex())
@@ -66,18 +66,18 @@ end
 -- read result: true for success, false for failure 
 -- size: received length in number of bytes
 -- data: received data in string 
-function modbus.modbus_read_register(uart_id, slave, instruction, reg, len)
+local function modbus_read_register(uart_id, slave, instruction, reg, len)
     if instruction ~= 0x03 and instruction ~= 0x04 then
         return false
     end
     -- clear rx buffer 
     uart.rxClear(uart_id) 
     -- send command 
-    modbus.modbus_send(uart_id, slave, instruction, reg, len)
+    modbus_send(uart_id, slave, instruction, reg, len)
     -- wait for process complete
     sys.wait(1000)
     -- read result 
-    local ret, _, _, size, data = modbus.modbus_recv(uart_id, slave, instruction)
+    local ret, _, _, size, data = modbus_recv(uart_id, slave, instruction)
     if not ret then
         log.error("modbus", "read_register_16", "failed to read modbus")
         return false
@@ -86,8 +86,8 @@ function modbus.modbus_read_register(uart_id, slave, instruction, reg, len)
     return true, size, data
 end
 
-function modbus.modbus_read_gps()
-    local ret, size, data = modbus.modbus_read_register(UART_ID, 0x01, 0x03, 0xC8, 0x0D) -- 13 words, 26 bytes
+local function modbus_read_gps()
+    local ret, size, data = modbus_read_register(UART_ID, 0x01, 0x03, 0xC8, 0x0D) -- 13 words, 26 bytes
     if not ret then
         log.error("modbus", "read_gps", "failed to read gps")
         return false
@@ -120,7 +120,7 @@ function modbus.modbus_read_gps()
     return true, {lat = lat, lon = lon}
 end
 
-function modbus.modbus_try_read_gps(attempts)
+function modbus.modbus_blocking_read_gps(attempts)
     -- default to 60 attempts
     if not attempts then
         attempts = 60
@@ -128,21 +128,21 @@ function modbus.modbus_try_read_gps(attempts)
     local attempt = 0
     while attempt < attempts do
         attempt = attempt + 1
-        log.debug("modbus", "try_read_gps", "attempt", attempt)
-        local ret, lat_lon = modbus.modbus_read_gps()
+        log.debug("modbus", "blocking_read_gps", "attempt", attempt)
+        local ret, lat_lon = modbus_read_gps()
         if ret then
-            log.info("modbus", "try_read_gps", "lat", lat_lon["lat"], "lon", lat_lon["lon"])
+            log.info("modbus", "blocking_read_gps", "lat", lat_lon["lat"], "lon", lat_lon["lon"])
             return true, lat_lon
         end
         sys.wait(2000)
     end
-    log.error("modbus", "try_read_gps", "timeout")
+    log.error("modbus", "blocking_read_gps", "timeout")
     return false
 end
 
 function modbus.modbus_read_ds18b20()
     -- read ds18b20 temperature 
-    local ret, size, data = modbus.modbus_read_register(UART_ID, 0x02, 0x04, 0x10, 0x02)
+    local ret, size, data = modbus_read_register(UART_ID, 0x02, 0x04, 0x10, 0x02)
     if not ret then
         log.error("modbus", "read_ds18b20", "failed to read ds18b20 data logger")
         return false

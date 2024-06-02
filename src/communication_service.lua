@@ -49,43 +49,117 @@ system_service.register_system_call("MQTT", function(cb)
     return true
 end)
 
+local function ip_setup()
+    log.info("ip", "wait")
+    local ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
+    if not ret then
+        log.error("ip", "timeout")
+        rtos.reboot()
+    end
+    log.info("ip", "ready")
+end
+
+local function sntp_setup()
+    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"}, socket.LWIP_GP)
+    local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
+    if not ret then
+        log.error("ntp", "failed")
+        -- shall we reboot? 
+    end
+    log.info("ntp", "updated")
+end
+
+local function fskv_setup()
+    fskv.init()
+    local used, total, kv_count = fskv.status()
+    log.info("fskv", "used", used, "total", total, "kv_count", kv_count)
+
+    -- print all data
+    local iter = fskv.iter()
+    if iter then
+        while 1 do
+            local k = fskv.next(iter)
+            if not k then
+                break
+            end
+            log.debug("fskv", "key", k, "value", fskv.get(k))
+        end
+    end
+end
+
+local function fskv_get_cert_key()
+    local cert = fskv.get("cert")
+    if not cert then
+        log.error("fskv", "get", "cert", "not exist")
+        return false
+    end
+    local key = fskv.get("key")
+    if not cert then
+        log.error("fskv", "get", "key", "not exist")
+        return false
+    end
+    return true, cert, key
+end
+
+local function fskv_set_cert_key(cert, key)
+    local ret
+    if type(cert) ~= "string" then
+        log.error("fskv", "set", "wrong cert type", type(cert))
+        return false
+    end
+    if type(key) ~= "string" then
+        log.error("fskv", "set", "wrong cert type", type(key))
+        return false
+    end
+    ret = fskv.set("cert", cert)
+    if not ret then
+        log.error("fskv", "set", "failed to set cert")
+        return false
+    end
+    ret = fskv.set("key", key)
+    if not ret then
+        log.error("fskv", "set", "failed to set key")
+        return false
+    end
+    return true
+end
+
 sys.taskInit(function()
-    -- log.info("cipher", "suites", json.encode(crypto.cipher_suites()))
-    assert(crypto.cipher_suites, "crypto.cipher_suites is not supported in the BSP")
-    assert(mqtt, "MQTT is not supported in the BSP")
+
+    assert(crypto.cipher_suites, "firmware missing crypto.cipher_suites support")
+    assert(mqtt, "firmware missing mqtt support")
+    assert(fskv, "firmware missing fskv support")
 
     local ret
 
     -- mobile.setAuto(check_sim_period, get_cell_period, search_cell_time, auto_reset_stack, network_check_period)
     mobile.setAuto(10 * 1000, 5 * 60 * 1000, 5, true, 5 * 60 * 1000)
 
-    -- wait for ip
-    log.info("task", "ip", "wait")
-    ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
+    ip_setup()
+    sntp_setup()
+    fskv_setup()
+
+    -- fskv_set_cert_key(io.readFile("/luadb/client.crt"), io.readFile("/luadb/client.key")) -- tmp 
+
+    local ret, cert, key = fskv_get_cert_key()
     if not ret then
-        log.error("task", "ip", "timeout")
-        log.info("task", "ip timeout", "reboot board")
+        log.error("mqtt", "failed to get mqtt cert and key")
+        sys.wait(30 * 60 * 1000) -- idle for 30 mins to wait for key dispatch from server 
+        -- TODO: request cert key from server 
         rtos.reboot()
     end
-    log.info("task", "ip", "ready")
-
-    -- sync system time 
-    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"}, socket.LWIP_GP)
-
-    ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
-    if not ret then
-        log.error("task", "ntp", "failed")
-    end
-    log.info("task", "ntp", "updated")
 
     -- setup mqtt
-    local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
-    local mqtt_port = 8883
     local mqtt_ssl = {
-        client_cert = io.readFile("/luadb/client.crt"),
-        client_key = io.readFile("/luadb/client.key"),
+        client_cert = cert,
+        client_key = key,
         verify = 0
     }
+    cert = nil
+    key = nil
+
+    local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
+    local mqtt_port = 8883
 
     local imei = mobile.imei()
     local client_id = imei
@@ -143,7 +217,7 @@ sys.taskInit(function()
             modbus.modbus_enable()
             sys.wait(2000)
     
-            modbus.modbus_try_read_gps(120)
+            modbus.modbus_blocking_read_gps(120)
             modbus.modbus_read_ds18b20()
             modbus.modbus_read_adc()
             

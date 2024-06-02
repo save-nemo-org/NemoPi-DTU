@@ -114,14 +114,14 @@ end)
 
 sys.taskInit(function()
     
-    modbus.setup_modbus()
+    modbus.modbus_setup()
     sys.wait(100)
 
-    modbus.enable_modbus()
+    modbus.modbus_enable()
     sys.wait(2000)
 
     while 1 do
-        
+
         modbus.modbus_read_gps()
         modbus.modbus_read_ds18b20()
         modbus.modbus_read_adc()

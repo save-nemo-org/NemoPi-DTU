@@ -146,30 +146,51 @@ function modbus.modbus_read_adc()
     log.info("modbus", "adc", ADC_ID, "voltage", voltage)
 end
 
-function modbus.setup_modbus()
-    gpio.setup(VPCB_GPIO, 0, gpio.PULLUP) -- configure internal power control gpio
-    gpio.setup(VOUT_GPIO, 0, gpio.PULLUP) -- configure power output control gpio
+function modbus.modbus_setup()
+    -- configure internal power control gpio
+    gpio.setup(VPCB_GPIO, 0, gpio.PULLUP)
+    log.info("modbus", "setup", "VPCB_GPIO", VPCB_GPIO)
+
+    -- configure power output control gpio
+    gpio.setup(VOUT_GPIO, 0, gpio.PULLUP)
+    log.info("modbus", "setup", "VOUT_GPIO", VOUT_GPIO)
 
     -- configure external voltage sensoring adc
     adc.setRange(adc.ADC_RANGE_3_8)
+    log.info("modbus", "setup", "adc", ADC_ID)
 end
 
-function modbus.enable_modbus()
+function modbus.modbus_enable()
     uart.setup(UART_ID, 9600, 8, 1, uart.NONE, uart.LSB, 1024, RS485_EN_GPIO, 0, 5000)  -- tx/rx switching delay: 20000 for 9600
     uart.on(UART_ID, "sent", uart.wait485)
+    log.info("modbus", "enable", "uart", UART_ID)
 
     adc.open(ADC_ID)
+    log.info("modbus", "enable", "adc", ADC_ID)
 
-    gpio.set(VPCB_GPIO, 1) -- turn on internal power 
-    gpio.set(VOUT_GPIO, 1) -- turn on power output
+    -- turn on internal power
+    gpio.set(VPCB_GPIO, 1)
+    log.info("modbus", "enable", "internal power")
+
+    -- turn on power output
+    gpio.set(VOUT_GPIO, 1)
+    log.info("modbus", "enable", "power output")
 end
 
-function modbus.disable_modbus()
-    gpio.set(VOUT_GPIO, 0) -- turn off power output
-    gpio.set(VPCB_GPIO, 0) -- turn off internal power 
+function modbus.modbus_disable()
+    -- turn off power output
+    gpio.set(VOUT_GPIO, 0)
+    log.info("modbus", "disable", "internal power")
+
+    -- turn off internal power 
+    gpio.set(VPCB_GPIO, 0)
+    log.info("modbus", "disable", "internal power")
 
     adc.close(ADC_ID)
+    log.info("modbus", "disable", "adc", ADC_ID)
+
     uart.close(UART_ID)
+    log.info("modbus", "disable", "uart", UART_ID)
 end
 
 return modbus

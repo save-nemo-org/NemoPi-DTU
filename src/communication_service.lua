@@ -54,6 +54,31 @@ sys.taskInit(function()
     assert(crypto.cipher_suites, "crypto.cipher_suites is not supported in the BSP")
     assert(mqtt, "MQTT is not supported in the BSP")
 
+    local ret
+
+    -- mobile.setAuto(check_sim_period, get_cell_period, search_cell_time, auto_reset_stack, network_check_period)
+    mobile.setAuto(10 * 1000, 5 * 60 * 1000, 5, true, 5 * 60 * 1000)
+
+    -- wait for ip
+    log.info("task", "ip", "wait")
+    ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
+    if not ret then
+        log.error("task", "ip", "timeout")
+        log.info("task", "ip timeout", "reboot board")
+        rtos.reboot()
+    end
+    log.info("task", "ip", "ready")
+
+    -- sync system time 
+    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"}, socket.LWIP_GP)
+
+    ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
+    if not ret then
+        log.error("task", "ntp", "failed")
+    end
+    log.info("task", "ntp", "updated")
+
+    -- setup mqtt
     local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
     local mqtt_port = 8883
     local mqtt_ssl = {
@@ -73,12 +98,9 @@ sys.taskInit(function()
         [sub_topic .. "cmd"] = 0,
     }
 
-    -- Wait for IP Address
-    sys.waitUntil("IP_READY")
-
     -- Print topic base 
-    log.info("mqtt", "pub", pub_topic)
-    log.info("mqtt", "sub", json.encode(sub_topic_table))
+    log.info("task", "mqtt", "pub", pub_topic)
+    log.info("task", "mqtt", "sub", json.encode(sub_topic_table))
 
     mqttc = mqtt.create(nil, mqtt_host, mqtt_port, mqtt_ssl)
     mqttc:auth(client_id, user_name, password, true) -- client_id must have value, the last parameter true is for clean session
@@ -110,25 +132,24 @@ sys.taskInit(function()
     end)
 
     mqttc:connect()
-end)
 
-sys.taskInit(function()
+    sys.taskInit(function()
     
-    modbus.modbus_setup()
-    sys.wait(100)
-
-    modbus.modbus_enable()
-    sys.wait(2000)
-
-    while 1 do
-
-        modbus.modbus_try_read_gps_or_timeout(120)
-        modbus.modbus_read_ds18b20()
-        modbus.modbus_read_adc()
-
+        modbus.modbus_setup()
+        sys.wait(100)
+    
+        modbus.modbus_enable()
         sys.wait(2000)
-    end
-
+    
+        while 1 do
+    
+            modbus.modbus_try_read_gps(120)
+            modbus.modbus_read_ds18b20()
+            modbus.modbus_read_adc()
+    
+            sys.wait(2000)
+        end
+    end)
 end)
 
 return communication_service

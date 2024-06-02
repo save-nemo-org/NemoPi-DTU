@@ -30,7 +30,6 @@ end
 
 rtc.timezone(0)
 socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
-socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"}, socket.LWIP_GP)
 
 local communication_service = require("communication_service")
 

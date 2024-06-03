@@ -183,7 +183,7 @@ sys.taskInit(function()
             sys.wait(1000)
             modbus.modbus_disable()
     
-            sys.wait(30 * 1000)
+            sys.wait(30 * 60 * 1000)
         end
     end)
 end)

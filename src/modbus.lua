@@ -155,16 +155,20 @@ function modbus.modbus_read_ds18b20()
     local result = {select(2, pack.unpack(data, ">h2"))}
     for key, value in pairs(result) do
         if value == -32768 then
-            log.error("modbus", "read_ds18b20", "index", key, "sensor disconnected")
+            value = "NO SENSOR"
         else
-            log.info("modbus", "read_ds18b20", "index", key, "temperature", value / 10)
+            value = value / 10
         end
+        log.info("modbus", "read_ds18b20", key, value)
+        result[key] = value
     end
+    return true, result
 end
 
 function modbus.modbus_read_adc()
     local voltage = adc.get(ADC_ID)*3300/103300
     log.info("modbus", "adc", ADC_ID, "voltage", voltage)
+    return true, voltage
 end
 
 function modbus.modbus_setup()

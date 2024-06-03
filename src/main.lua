@@ -2,14 +2,8 @@
 PROJECT = "nemopi-dtu"
 VERSION = "0.0.1"
 
---[[
-MQTT is an inbuilt lib, so user doesn't need to import it explicitly 
-]]
-
--- Sys is a required lib 
-_G.sys = require("sys")
--- MQTT application need this lib 
-_G.sysplus = require("sysplus")
+_G.sys = require("sys") -- Sys is a required lib 
+_G.sysplus = require("sysplus") -- MQTT application need this lib 
 
 -- log.setLevel(log.LOG_INFO)
 
@@ -34,9 +28,9 @@ socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
 local communication_service = require("communication_service")
 
 -- Setup NET LED --
-local netLed = require("netLed")
-local NETLED_PIN = 27
-netLed.setup(true, NETLED_PIN, nil)
+-- local netLed = require("netLed")
+-- local NETLED_PIN = 27
+-- netLed.setup(true, NETLED_PIN, nil)
 
 -- sys.taskInit(function()
 --     while 1 do

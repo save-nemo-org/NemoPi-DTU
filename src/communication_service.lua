@@ -143,49 +143,60 @@ sys.taskInit(function()
     log.info("mqtt", "connect", "ready")
 
     -- start sensoring task
-    sys.taskInit(function()
-    
-        modbus.modbus_setup()
-        sys.wait(1000)
-    
-        while 1 do
 
-            modbus.modbus_enable()
-            sys.wait(2000)
-            
-            do 
-                local ret, lat_lon = modbus.modbus_blocking_read_gps(120)
-                if ret then
-                    mqttc:publish(pub_topic .. "telemetry/" .. "lat_lon", json.encode(lat_lon), 0)
-                else
-                    mqttc:publish(pub_topic .. "telemetry/" .. "lat_lon", "NO_DATA", 0)
-                end
-            end
+    modbus.modbus_setup()
+    sys.wait(1000)
 
-            do
-                local ret, ds18b20 = modbus.modbus_read_ds18b20()
-                if ret then
-                    mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", json.encode(ds18b20), 0)
-                else
-                    mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", "NO_DATA", 0)
-                end
-            end
+    modbus.modbus_enable()
+    sys.wait(10 * 1000)
 
-            do
-                local ret, vbat = modbus.modbus_read_adc()
-                if ret then
-                    mqttc:publish(pub_topic .. "telemetry/" .. "vbat", json.encode(vbat), 0)
-                else
-                    mqttc:publish(pub_topic .. "telemetry/" .. "vbat", "NO_DATA", 0)
-                end
+    local gps = modbus.Gps:detect()
+
+    sys.wait(2000)
+    modbus.modbus_disable()
+
+    while 1 do
+
+        modbus.modbus_enable()
+        sys.wait(2000)
+        
+        -- do 
+        --     local ret, lat_lon = modbus.modbus_blocking_read_gps(120)
+        --     if ret then
+        --         mqttc:publish(pub_topic .. "telemetry/" .. "lat_lon", json.encode(lat_lon), 0)
+        --     else
+        --         mqttc:publish(pub_topic .. "telemetry/" .. "lat_lon", "NO_DATA", 0)
+        --     end
+        -- end
+        do
+            if gps then
+                gps:run()
             end
-            
-            sys.wait(1000)
-            modbus.modbus_disable()
-    
-            sys.wait(30 * 60 * 1000)
         end
-    end)
+
+        do
+            local ret, ds18b20 = modbus.modbus_read_ds18b20()
+            if ret then
+                mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", json.encode(ds18b20), 0)
+            else
+                mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", "NO_DATA", 0)
+            end
+        end
+
+        do
+            local ret, vbat = modbus.modbus_read_adc()
+            if ret then
+                mqttc:publish(pub_topic .. "telemetry/" .. "vbat", json.encode(vbat), 0)
+            else
+                mqttc:publish(pub_topic .. "telemetry/" .. "vbat", "NO_DATA", 0)
+            end
+        end
+        
+        sys.wait(1000)
+        modbus.modbus_disable()
+
+        sys.wait(30 * 60 * 1000)
+    end
 end)
 
 return communication_service

@@ -90,25 +90,25 @@ local function modbus_read_gps()
     local ret, size, data = modbus_read_register(UART_ID, 0x01, 0x03, 0xC8, 0x0D) -- 13 words, 26 bytes
     if not ret then
         log.error("modbus", "read_gps", "failed to read gps")
-        return false
+        return -1
     end
     if size ~= 26 then
         log.error("modbus", "read_gps", "wrong data size", size)
-        return false
+        return -2
     end
 
     local gps_valid, _, _, _, _, _, _, lon_dir, lon, lat_dir, lat = select(2, pack.unpack(data, ">h7hfhf"))
     if gps_valid ~= 1 then
         log.error("modbus", "read_gps", "gps invalid")
-        return false
+        return -3
     end
     if lon_dir ~= 0x45 and lon_dir ~= 0x57 then
         log.error("modbus", "read_gps", "invalid gps longitude direction")
-        return false
+        return -4
     end
     if lat_dir ~= 0x4E and lat_dir ~= 0x53 then
         log.error("modbus", "read_gps", "invalid gps longitude direction")
-        return false
+        return -5
     end
     if lon_dir == 0x57 then
         lon = lon * -1
@@ -117,28 +117,45 @@ local function modbus_read_gps()
         lat = lat * -1
     end
     log.info("modbus", "read_gps", "lat", lat, "lon", lon)
-    return true, {lat = lat, lon = lon}
+    return 0, {lat = lat, lon = lon}
 end
 
-function modbus.modbus_blocking_read_gps(attempts)
-    -- default to 60 attempts
-    if not attempts then
-        attempts = 60
+local Gps = {}
+
+function Gps:detect()
+    o = {}
+    setmetatable(o, self)
+    self.__index = self
+
+    log.info("Gps", "detect")
+    for attempt=1,5 do
+        log.debug("Gps", "detect", "attempt", attempt)
+        local ret = modbus_read_gps()
+        if ret == 0 or ret < -2 then
+            log.debug("Gps", "detect", "detected")
+            return self
+        end
     end
-    local attempt = 0
-    while attempt < attempts do
-        attempt = attempt + 1
-        log.debug("modbus", "blocking_read_gps", "attempt", attempt)
+    log.error("Gps", "detect", "failed")
+    return nil
+end
+
+function Gps:run()
+    log.info("Gps", "run")
+    for attempt=1,60 do
+        log.debug("Gps", "run", "attempt", attempt)
         local ret, lat_lon = modbus_read_gps()
-        if ret then
-            log.info("modbus", "blocking_read_gps", "lat", lat_lon["lat"], "lon", lat_lon["lon"])
-            return true, lat_lon
+        if ret == 0 then
+            log.debug("Gps", "run", "lat", lat_lon["lat"], "lon", lat_lon["lon"])
+            return lat_lon
         end
         sys.wait(2000)
     end
-    log.error("modbus", "blocking_read_gps", "timeout")
-    return false
+    log.error("Gps", "run", "timeout")
+    return nil
 end
+
+modbus.Gps = Gps
 
 function modbus.modbus_read_ds18b20()
     -- read ds18b20 temperature 

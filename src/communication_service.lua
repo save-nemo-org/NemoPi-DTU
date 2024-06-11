@@ -3,6 +3,7 @@ local communication_service = {}
 local system_service = require("system_service")
 local modbus = require("modbus")
 local utils = require("utils")
+local sensors = require("sensors")
 
 local function starts_with(str, start)
     return str:sub(1, #start) == start
@@ -15,8 +16,8 @@ end
 local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
 local mqtt_port = 8883
 local imei = mobile.imei()
-local pub_topic = "/" .. imei .. "/pub/"
-local sub_topic = "/" .. imei .. "/sub/#"
+local pub_topic = "buoys/" .. imei .. "/d2c"
+local sub_topic = "buoys/" .. imei .. "/c2d"
 
 local mqttc = nil
 
@@ -105,27 +106,24 @@ sys.taskInit(function()
 
     local user_name = "client"
     local password = ""
-
-    -- Print topic base 
-    log.info("mqtt", "pub", pub_topic)
     
     mqttc = mqtt.create(nil, mqtt_host, mqtt_port, mqtt_ssl)
     mqttc:auth(imei, user_name, password, true) -- client_id must have value, the last parameter true is for clean session
     mqttc:keepalive(60) -- default value 240s 
     mqttc:autoreconn(true, 3000) -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures 
-    -- mqttc:debug(true)
+    mqttc:debug(false)
 
     mqttc:on(function(mqtt_client, event, topic, payload)
         log.info("mqtt", "event", event, mqtt_client, topic, payload)
         if event == "conack" then
-            mqttc:subscribe(sub_topic)
-            mqttc:publish(pub_topic .. "conack", imei, 0)
+            mqttc:subscribe(sub_topic .. "/#")
+            mqttc:publish(pub_topic .. "/conack", imei, 0)
             sys.publish("mqtt_conack")
 
         elseif event == "recv" then
             if ends_with(topic, "cmd") then
                 local cb = function(msg)
-                    mqttc:publish(pub_topic .. "cmd", msg, 0)
+                    mqttc:publish(pub_topic .. "/cmd", msg, 0)
                 end
                 system_service.system_call(cb, payload)
             end
@@ -143,59 +141,98 @@ sys.taskInit(function()
     log.info("mqtt", "connect", "ready")
 
     -- start sensoring task
+    local UART_ID = 1
+    local RS485_EN_GPIO = 25
+    local VPCB_GPIO = 22 -- internal power to RS485 and ADC
+    local VOUT_GPIO = 24 -- power output
 
-    modbus.modbus_setup()
-    sys.wait(1000)
+    log.info("main", "setup")
+    gpio.setup(VPCB_GPIO, 1, gpio.PULLUP)
+    gpio.setup(VOUT_GPIO, 1, gpio.PULLUP)
+    adc.setRange(adc.ADC_RANGE_3_8)
 
-    modbus.modbus_enable()
+    modbus.enable(UART_ID, RS485_EN_GPIO)
+
     sys.wait(10 * 1000)
+    
+    local detected_sensors = {}
+    do
+        local telemetry = {
+            type = "detect",
+            sensors = {},
+        }
+    
+        log.info("main", "detect")
+        for name, sensor_class in pairs(sensors.sensor_classes) do
+            log.info("main", "detect", name)
+            local ret, detected = sensor_class:detect()
+            if ret then
+                log.info("main", "detected", name)
+                table.insert(detected_sensors, detected)
+                table.insert(telemetry.sensors, detected:info())
+            end
+        end
 
-    local gps = modbus.Gps:detect()
+        mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+    end
+    
 
-    sys.wait(2000)
-    modbus.modbus_disable()
+    -- send detection telemetry
+
+    
+
+    -- modbus.modbus_setup()
+    
+
+    -- modbus.modbus_enable()
+    -- sys.wait(10 * 1000)
+
+    -- sys.wait(2000)
+    -- modbus.modbus_disable()
 
     while 1 do
 
-        modbus.modbus_enable()
-        sys.wait(2000)
+        -- modbus.modbus_enable()
+        -- sys.wait(2000)
+        do
+            for index, sensor in ipairs(detected_sensors) do
+                log.info("main", "run", "index", index)
+                local info = sensor:info()
+                local data = sensor:run()
+                
+                local telemetry = {
+                    model = info.model,
+                    interface = info.interface,
+                    address = info.address,
+                    data = data
+                }
+                mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+            end
+        end
         
-        -- do 
-        --     local ret, lat_lon = modbus.modbus_blocking_read_gps(120)
+
+        -- do
+        --     local ret, ds18b20 = modbus.modbus_read_ds18b20()
         --     if ret then
-        --         mqttc:publish(pub_topic .. "telemetry/" .. "lat_lon", json.encode(lat_lon), 0)
+        --         mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", json.encode(ds18b20), 0)
         --     else
-        --         mqttc:publish(pub_topic .. "telemetry/" .. "lat_lon", "NO_DATA", 0)
+        --         mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", "NO_DATA", 0)
         --     end
         -- end
-        do
-            if gps then
-                gps:run()
-            end
-        end
 
-        do
-            local ret, ds18b20 = modbus.modbus_read_ds18b20()
-            if ret then
-                mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", json.encode(ds18b20), 0)
-            else
-                mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", "NO_DATA", 0)
-            end
-        end
-
-        do
-            local ret, vbat = modbus.modbus_read_adc()
-            if ret then
-                mqttc:publish(pub_topic .. "telemetry/" .. "vbat", json.encode(vbat), 0)
-            else
-                mqttc:publish(pub_topic .. "telemetry/" .. "vbat", "NO_DATA", 0)
-            end
-        end
+        -- do
+        --     local ret, vbat = modbus.modbus_read_adc()
+        --     if ret then
+        --         mqttc:publish(pub_topic .. "telemetry/" .. "vbat", json.encode(vbat), 0)
+        --     else
+        --         mqttc:publish(pub_topic .. "telemetry/" .. "vbat", "NO_DATA", 0)
+        --     end
+        -- end
         
-        sys.wait(1000)
-        modbus.modbus_disable()
+        -- sys.wait(1000)
+        -- modbus.modbus_disable()
 
-        sys.wait(30 * 60 * 1000)
+        sys.wait(30 * 1000)
     end
 end)
 

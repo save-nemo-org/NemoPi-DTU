@@ -114,12 +114,13 @@ sys.taskInit(function()
     mqttc:debug(false)
 
     mqttc:on(function(mqtt_client, event, topic, payload)
-        log.info("mqtt", "event", event, mqtt_client, topic, payload)
         if event == "conack" then
             mqttc:subscribe(sub_topic .. "/#")
-            mqttc:publish(pub_topic .. "/conack", imei, 0)
-            sys.publish("mqtt_conack")
-
+            local telemetry = {
+                msg_type = "connect",
+                imei = imei,
+            }
+            mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
         elseif event == "recv" then
             if ends_with(topic, "cmd") then
                 local cb = function(msg)
@@ -128,7 +129,7 @@ sys.taskInit(function()
                 system_service.system_call(cb, payload)
             end
         elseif event == "sent" then
-
+            sys.publish("mqtt_sent")
         elseif event == "disconnect" then
             -- mqtt_client:connect()    -- required when autoreconn is false
         end
@@ -137,7 +138,7 @@ sys.taskInit(function()
     -- connect mqtt
     log.info("mqtt", "connect", "wait")
     mqttc:connect()
-    sys.waitUntil("mqtt_conack")
+    sys.waitUntil("mqtt_sent")
     log.info("mqtt", "connect", "ready")
 
     -- start sensoring task
@@ -158,7 +159,7 @@ sys.taskInit(function()
     local detected_sensors = {}
     do
         local telemetry = {
-            type = "detect",
+            msg_type = "detect",
             sensors = {},
         }
     
@@ -201,6 +202,7 @@ sys.taskInit(function()
                 local data = sensor:run()
                 
                 local telemetry = {
+                    msg_type = "read",
                     model = info.model,
                     interface = info.interface,
                     address = info.address,

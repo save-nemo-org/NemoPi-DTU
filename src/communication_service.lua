@@ -1,8 +1,9 @@
 local communication_service = {}
 
 local system_service = require("system_service")
-local modbus = require("modbus")
 local utils = require("utils")
+local modbus = require("modbus")
+local power = require("power")
 local sensors = require("sensors")
 
 local function starts_with(str, start)
@@ -10,7 +11,7 @@ local function starts_with(str, start)
 end
 
 local function ends_with(str, ending)
-    return ending == "" or str:sub(-#ending) == ending
+    return ending == "" or str:sub(- #ending) == ending
 end
 
 local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
@@ -52,20 +53,19 @@ local function sms_setup()
 end
 
 sys.taskInit(function()
-
     assert(crypto.cipher_suites, "firmware missing crypto.cipher_suites support")
     assert(mqtt, "firmware missing mqtt support")
     assert(fskv, "firmware missing fskv support")
 
     local ret
 
-    -- setup sms callback 
+    -- setup sms callback
     sms_setup()
 
     -- mobile.setAuto(check_sim_period, get_cell_period, search_cell_time, auto_reset_stack, network_check_period)
     mobile.setAuto(10 * 1000, 5 * 60 * 1000, 5, true, 5 * 60 * 1000)
 
-    -- setup internet access 
+    -- setup internet access
     log.info("ip", "wait")
     local ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
     if not ret then
@@ -75,7 +75,7 @@ sys.taskInit(function()
     log.info("ip", "ready")
 
     -- sync system time
-    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"}, socket.LWIP_GP)
+    socket.sntp({ "0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com" }, socket.LWIP_GP)
     local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
     if not ret then
         log.error("ntp", "failed")
@@ -85,13 +85,13 @@ sys.taskInit(function()
 
     utils.fskv_setup()
 
-    -- fskv_set_cert_key(io.readFile("/luadb/client.crt"), io.readFile("/luadb/client.key")) -- tmp 
+    -- fskv_set_cert_key(io.readFile("/luadb/client.crt"), io.readFile("/luadb/client.key")) -- tmp
 
     local ret, cert, key = utils.fskv_get_cert_key()
     if not ret then
         log.error("mqtt", "failed to get mqtt cert and key")
-        sys.wait(30 * 60 * 1000) -- idle for 30 mins to wait for key dispatch from server 
-        -- TODO: request cert key from server 
+        sys.wait(30 * 60 * 1000) -- idle for 30 mins to wait for key dispatch from server
+        -- TODO: request cert key from server
         rtos.reboot()
     end
 
@@ -106,11 +106,11 @@ sys.taskInit(function()
 
     local user_name = "client"
     local password = ""
-    
+
     mqttc = mqtt.create(nil, mqtt_host, mqtt_port, mqtt_ssl)
     mqttc:auth(imei, user_name, password, true) -- client_id must have value, the last parameter true is for clean session
-    mqttc:keepalive(60) -- default value 240s 
-    mqttc:autoreconn(true, 3000) -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures 
+    mqttc:keepalive(60)                         -- default value 240s
+    mqttc:autoreconn(true, 3000)                -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures
     mqttc:debug(false)
 
     mqttc:on(function(mqtt_client, event, topic, payload)
@@ -144,25 +144,24 @@ sys.taskInit(function()
     -- start sensoring task
     local UART_ID = 1
     local RS485_EN_GPIO = 25
-    local VPCB_GPIO = 22 -- internal power to RS485 and ADC
-    local VOUT_GPIO = 24 -- power output
 
     log.info("main", "setup")
-    gpio.setup(VPCB_GPIO, 1, gpio.PULLUP)
-    gpio.setup(VOUT_GPIO, 1, gpio.PULLUP)
-    adc.setRange(adc.ADC_RANGE_3_8)
-
+    power.setup()
     modbus.enable(UART_ID, RS485_EN_GPIO)
 
+    sys.wait(2 * 1000)
+
+    power.internal.enable()
+    power.external.enable()
     sys.wait(10 * 1000)
-    
+
     local detected_sensors = {}
     do
         local telemetry = {
             msg_type = "detect",
             sensors = {},
         }
-    
+
         log.info("main", "detect")
         for name, sensor_class in pairs(sensors.sensor_classes) do
             log.info("main", "detect", name)
@@ -176,31 +175,23 @@ sys.taskInit(function()
 
         mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
     end
-    
 
-    -- send detection telemetry
+    sys.wait(2000)
+    power.internal.disable()
+    power.external.disable()
 
-    
-
-    -- modbus.modbus_setup()
-    
-
-    -- modbus.modbus_enable()
-    -- sys.wait(10 * 1000)
-
-    -- sys.wait(2000)
-    -- modbus.modbus_disable()
+    sys.wait(2000)
 
     while 1 do
-
-        -- modbus.modbus_enable()
-        -- sys.wait(2000)
+        power.internal.enable()
+        power.external.enable()
+        sys.wait(10 * 1000)
         do
             for index, sensor in ipairs(detected_sensors) do
                 log.info("main", "run", "index", index)
                 local info = sensor:info()
                 local data = sensor:run()
-                
+
                 local telemetry = {
                     msg_type = "read",
                     model = info.model,
@@ -211,30 +202,30 @@ sys.taskInit(function()
                 mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
             end
         end
-        
 
-        -- do
-        --     local ret, ds18b20 = modbus.modbus_read_ds18b20()
-        --     if ret then
-        --         mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", json.encode(ds18b20), 0)
-        --     else
-        --         mqttc:publish(pub_topic .. "telemetry/" .. "ds18b20", "NO_DATA", 0)
-        --     end
-        -- end
+        sys.wait(2 * 1000)
+        power.internal.disable()
+        power.external.disable()
 
-        -- do
-        --     local ret, vbat = modbus.modbus_read_adc()
-        --     if ret then
-        --         mqttc:publish(pub_topic .. "telemetry/" .. "vbat", json.encode(vbat), 0)
-        --     else
-        --         mqttc:publish(pub_topic .. "telemetry/" .. "vbat", "NO_DATA", 0)
-        --     end
-        -- end
-        
-        -- sys.wait(1000)
-        -- modbus.modbus_disable()
+        sys.wait(2 * 1000)
 
-        sys.wait(30 * 1000)
+        power.internal.enable()
+        sys.wait(1 * 1000)
+
+        do
+            local vbat = power.internal.vbat()
+
+            local telemetry = {
+                msg_type = "diagnose",
+                vbat = vbat,
+            }
+            mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+        end
+
+        sys.wait(1 * 1000)
+        power.internal.disable()
+
+        sys.wait(60 * 1000)
     end
 end)
 

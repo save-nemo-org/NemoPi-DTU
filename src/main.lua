@@ -2,12 +2,11 @@
 PROJECT = "nemopi-dtu"
 VERSION = "0.0.1"
 
-_G.sys = require("sys") -- Sys is a required lib 
-_G.sysplus = require("sysplus") -- MQTT application need this lib 
+_G.sys = require("sys")
+_G.sysplus = require("sysplus")
 
 -- log.setLevel(log.LOG_INFO)
 
--- Air780E的AT固件默认会为开机键防抖, 导致部分用户刷机很麻烦
 -- Disable power key debouncing 
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)
@@ -25,25 +24,22 @@ end
 rtc.timezone(0)
 socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
 
-local communication_service = require("communication_service")
+local nemopi = require("nemopi")
 
 -- Setup NET LED --
 -- local netLed = require("netLed")
 -- local NETLED_PIN = 27
 -- netLed.setup(true, NETLED_PIN, nil)
 
--- sys.taskInit(function()
---     while 1 do
---         -- Print mem usage, debug only
---         sys.wait(10 * 1000)
+sys.taskInit(function()
+    while 1 do
+        -- Print mem usage, debug only
+        sys.wait(60 * 1000)
 
---         local total_lua, used_lua, max_used_lua = rtos.meminfo("lua")
---         log.info("lua", used_lua / total_lua, max_used_lua / total_lua)
-
---         local total_sys, used_sys, max_used_sys = rtos.meminfo("sys")
---         log.info("sys", used_sys / total_sys, max_used_sys / total_sys)
---     end
--- end)
+        log.info("lua", rtos.meminfo("lua"))
+        log.info("sys", rtos.meminfo("sys"))
+    end
+end)
 
 -- End of User Code ---------------------------------------------
 -- Start scheduler 

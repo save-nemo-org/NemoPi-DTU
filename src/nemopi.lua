@@ -1,4 +1,4 @@
-local communication_service = {}
+local nemopi = {}
 
 local system_service = require("system_service")
 local utils = require("utils")
@@ -225,8 +225,8 @@ sys.taskInit(function()
         sys.wait(1 * 1000)
         power.internal.disable()
 
-        sys.wait(60 * 1000)
+        sys.wait(60 * 60 * 1000)
     end
 end)
 
-return communication_service
+return nemopi

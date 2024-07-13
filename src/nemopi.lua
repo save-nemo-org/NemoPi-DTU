@@ -49,8 +49,12 @@ local function sms_setup()
             -- http client works in task
             sys.taskInit(function()
                 sys.wait(1000)
-                local code, headers, body = http.request("GET", url).wait()
-                log.info("http", code, body)
+                local code, _, body = http.request("GET", url).wait()
+                if code == 200 then
+                    local creds = json.decode(body)
+                    utils.fskv_set_credentials(creds)
+                    utils.handle_error(1000)
+                end
             end)
         end
     end)

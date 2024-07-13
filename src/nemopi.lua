@@ -1,6 +1,5 @@
 local nemopi = {}
 
-local system_service = require("system_service")
 local utils = require("utils")
 local modbus = require("modbus")
 local power = require("power")
@@ -22,33 +21,38 @@ local sub_topic = "buoys/" .. imei .. "/c2d"
 
 local mqttc = nil
 
-system_service.register_system_call("MQTT", function(cb)
-    if mqttc == nil then
-        cb("NOT_INITIALISED")
-    else
-        local mqtt_state_name = {
-            [mqtt.STATE_DISCONNECT] = "STATE_DISCONNECT",
-            [mqtt.STATE_SCONNECT] = "STATE_SCONNECT",
-            [mqtt.STATE_MQTT] = "STATE_MQTT",
-            [mqtt.STATE_READY] = "STATE_READY"
-        }
-        cb(mqtt_state_name[mqttc:state()])
-    end
-    return true
-end)
-
 local function sms_setup()
     sms.setNewSmsCb(function(num, txt, metas)
-        local cb
-        cb = function(msg)
-            local segment_size = 140
-            local segment = msg:sub(1, segment_size)
-            sms.send(num, segment, false)
-            if #msg > segment_size then
-                sys.timerStart(cb, 1000, msg:sub(segment_size + 1))
-            end
+        -- parse str into cmd and args
+        local iter = string.gmatch(txt, "%S+")
+        local cmd = iter()
+        local args = {}
+        for arg in iter do
+            table.insert(args, arg)
         end
-        system_service.system_call(cb, txt)
+        -- process
+        if cmd == "PING" then
+            sms.send(num, "OK", false)
+        elseif cmd == "REBOOT" then
+            log.warn("reboot!!!")
+            rtos.reboot()
+        elseif cmd == "CREDENTIALS" then
+            local url = args[1]
+            if url == nil then
+                log.error("sms", "cred", "missing url")
+                return
+            end
+            if not starts_with(url, "http://") and not starts_with(url, "https://") then
+                log.error("sms", "cred", "invalid url")
+                return
+            end
+            -- http client works in task
+            sys.taskInit(function()
+                sys.wait(1000)
+                local code, headers, body = http.request("GET", url).wait()
+                log.info("http", code, body)
+            end)
+        end
     end)
 end
 
@@ -83,34 +87,23 @@ sys.taskInit(function()
     end
     log.info("ntp", "ready")
 
+    -- get credentials
     utils.fskv_setup()
-
-    -- fskv_set_cert_key(io.readFile("/luadb/client.crt"), io.readFile("/luadb/client.key")) -- tmp
-
-    local ret, cert, key = utils.fskv_get_cert_key()
+    local ret, credentials = utils.fskv_get_credentials()
     if not ret then
-        log.error("mqtt", "failed to get mqtt cert and key")
-        sys.wait(30 * 60 * 1000) -- idle for 30 mins to wait for key dispatch from server
-        -- TODO: request cert key from server
-        rtos.reboot()
+        log.error("mqtt", "failed to get mqtt credentials")
+        utils.handle_error(30 * 60 * 1000)
     end
 
     -- setup mqtt
-    local mqtt_ssl = {
-        client_cert = cert,
-        client_key = key,
+    mqttc = mqtt.create(nil, mqtt_host, mqtt_port, {
+        client_cert = credentials["cert"],
+        client_key = credentials["key"],
         verify = 0
-    }
-    cert = nil
-    key = nil
-
-    local user_name = "client"
-    local password = ""
-
-    mqttc = mqtt.create(nil, mqtt_host, mqtt_port, mqtt_ssl)
-    mqttc:auth(imei, user_name, password, true) -- client_id must have value, the last parameter true is for clean session
-    mqttc:keepalive(60)                         -- default value 240s
-    mqttc:autoreconn(true, 3000)                -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures
+    })
+    mqttc:auth(imei, credentials["username"], credentials["password"], true) -- client_id must have value, the last parameter true is for clean session
+    mqttc:keepalive(60)                                                      -- default value 240s
+    mqttc:autoreconn(true, 3000)                                             -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures
     mqttc:debug(false)
 
     mqttc:on(function(mqtt_client, event, topic, payload)
@@ -121,13 +114,13 @@ sys.taskInit(function()
                 imei = imei,
             }
             mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
-        elseif event == "recv" then
-            if ends_with(topic, "cmd") then
-                local cb = function(msg)
-                    mqttc:publish(pub_topic .. "/cmd", msg, 0)
-                end
-                system_service.system_call(cb, payload)
-            end
+            -- elseif event == "recv" then
+            --     if ends_with(topic, "cmd") then
+            --         local cb = function(msg)
+            --             mqttc:publish(pub_topic .. "/cmd", msg, 0)
+            --         end
+            --         system_service.system_call(cb, payload)
+            --     end
         elseif event == "sent" then
             sys.publish("mqtt_sent")
         elseif event == "disconnect" then
@@ -183,6 +176,9 @@ sys.taskInit(function()
     sys.wait(2000)
 
     while 1 do
+        -- #######################################################################
+        -- telemetry
+        -- #######################################################################
         power.internal.enable()
         power.external.enable()
         sys.wait(10 * 1000)
@@ -206,9 +202,13 @@ sys.taskInit(function()
         sys.wait(2 * 1000)
         power.internal.disable()
         power.external.disable()
+        -- #######################################################################
 
         sys.wait(2 * 1000)
 
+        -- #######################################################################
+        -- diagnose
+        -- #######################################################################
         power.internal.enable()
         sys.wait(1 * 1000)
 
@@ -224,6 +224,7 @@ sys.taskInit(function()
 
         sys.wait(1 * 1000)
         power.internal.disable()
+        -- #######################################################################
 
         sys.wait(60 * 60 * 1000)
     end

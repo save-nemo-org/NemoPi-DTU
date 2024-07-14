@@ -36,11 +36,11 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
 
 ### MQTT API
 
-|                     |                   |
-| ------------------- | ----------------- |
-| client_id           | \<IMEI>           |
-| d2c endpoint prefix | buoys/\<IMEI>/d2c |
-| c2d endpoint prefix | buoys/\<IMEI>/c2d |
+|              |                     |
+| ------------ | ------------------- |
+| client_id    | \<IMEI>             |
+| publish to   | buoys/\<IMEI>/d2c/# |
+| subscribe to | buoys/\<IMEI>/c2d/# |
 
 #### D2C Telemetry
 
@@ -83,7 +83,7 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
     "sensors": [
       {
         "model": "DS18B20-LOGGER",
-        "data": { "ch1": float },    # no data reported for disconnected channel 2, due to device SDK delect json key when value is NULL 
+        "data": { "ch1": float },    # no data reported for disconnected channel 2, due to device SDK delects json key when value is NULL
         "address": 2,
         "interface": "rs485"
       }
@@ -104,3 +104,22 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   }
   ```
 
+#### C2D Telemetry
+
+##### Diagnosis info
+
+- endpoint: `buoys/\<IMEI>/c2d/cmd`
+- msg_type: credentials
+- schema:
+  ```json
+  {
+    "msg_type": "credentials",
+    "credentials": {
+      "username": str,
+      "password": str,
+      "cert": str,
+      "key": str,
+    }
+  }
+  ```
+- response: device will reboot after applying the new credentials, server should expect a new logon message with new credentials

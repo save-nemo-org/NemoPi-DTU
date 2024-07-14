@@ -94,7 +94,7 @@ function utils.download_credentials(url)
         if not ret then
             log.error("download_credentials", "failed to parse and save credentials")
         end
-        log.error("download_credentials", "success")
+        log.info("download_credentials", "success")
 
         utils.reboot_with_delay(1000)
     end)

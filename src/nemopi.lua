@@ -91,7 +91,17 @@ sys.taskInit(function()
             }
             mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
         elseif event == "recv" then
-            print(topic, payload)
+            if utils.ends_with(topic, "/cmd") then
+                local telemetry = json.decode(payload)
+                if telemetry["msg_type"] == "credentials" then
+                    local ret = utils.fskv_set_credentials(telemetry["credentials"])
+                    if ret then
+                        utils.reboot_with_delay(1000)
+                    else
+                        log.error("c2d", "credentials", "failed to set credentials")
+                    end
+                end
+            end
         elseif event == "sent" then
             sys.publish("mqtt_sent")
         elseif event == "disconnect" then

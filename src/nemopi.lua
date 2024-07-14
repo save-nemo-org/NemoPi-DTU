@@ -5,14 +5,6 @@ local modbus = require("modbus")
 local power = require("power")
 local sensors = require("sensors")
 
-local function starts_with(str, start)
-    return str:sub(1, #start) == start
-end
-
-local function ends_with(str, ending)
-    return ending == "" or str:sub(- #ending) == ending
-end
-
 local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
 local mqtt_port = 8883
 local imei = mobile.imei()
@@ -37,25 +29,7 @@ local function sms_setup()
             log.warn("reboot!!!")
             rtos.reboot()
         elseif cmd == "CREDENTIALS" then
-            local url = args[1]
-            if url == nil then
-                log.error("sms", "cred", "missing url")
-                return
-            end
-            if not starts_with(url, "http://") and not starts_with(url, "https://") then
-                log.error("sms", "cred", "invalid url")
-                return
-            end
-            -- http client works in task
-            sys.taskInit(function()
-                sys.wait(1000)
-                local code, _, body = http.request("GET", url).wait()
-                if code == 200 then
-                    local creds = json.decode(body)
-                    utils.fskv_set_credentials(creds)
-                    utils.handle_error(1000)
-                end
-            end)
+            utils.download_credentials(args[1])
         end
     end)
 end
@@ -65,7 +39,8 @@ sys.taskInit(function()
     assert(mqtt, "firmware missing mqtt support")
     assert(fskv, "firmware missing fskv support")
 
-    local ret
+    -- setup database 
+    utils.fskv_setup()
 
     -- setup sms callback
     sms_setup()
@@ -78,7 +53,7 @@ sys.taskInit(function()
     local ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
     if not ret then
         log.error("ip", "timeout")
-        utils.handle_error()
+        utils.reboot_with_delay()
     end
     log.info("ip", "ready")
 
@@ -87,16 +62,15 @@ sys.taskInit(function()
     local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
     if not ret then
         log.error("ntp", "failed")
-        utils.handle_error()
+        utils.reboot_with_delay()
     end
     log.info("ntp", "ready")
 
     -- get credentials
-    utils.fskv_setup()
     local ret, credentials = utils.fskv_get_credentials()
     if not ret then
         log.error("mqtt", "failed to get mqtt credentials")
-        utils.handle_error(30 * 60 * 1000)
+        utils.reboot_with_delay(30 * 60 * 1000)
     end
 
     -- setup mqtt

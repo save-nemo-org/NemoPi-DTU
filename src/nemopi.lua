@@ -11,8 +11,6 @@ local imei = mobile.imei()
 local pub_topic = "buoys/" .. imei .. "/d2c"
 local sub_topic = "buoys/" .. imei .. "/c2d"
 
-local mqttc = nil
-
 local function sms_setup()
     sms.setNewSmsCb(function(num, txt, metas)
         -- parse str into cmd and args
@@ -39,7 +37,7 @@ sys.taskInit(function()
     assert(mqtt, "firmware missing mqtt support")
     assert(fskv, "firmware missing fskv support")
 
-    -- setup database 
+    -- setup database
     utils.fskv_setup()
 
     -- setup sms callback
@@ -74,7 +72,7 @@ sys.taskInit(function()
     end
 
     -- setup mqtt
-    mqttc = mqtt.create(nil, mqtt_host, mqtt_port, {
+    local mqttc = mqtt.create(nil, mqtt_host, mqtt_port, {
         client_cert = credentials["cert"],
         client_key = credentials["key"],
         verify = 0
@@ -92,13 +90,8 @@ sys.taskInit(function()
                 imei = imei,
             }
             mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
-            -- elseif event == "recv" then
-            --     if ends_with(topic, "cmd") then
-            --         local cb = function(msg)
-            --             mqttc:publish(pub_topic .. "/cmd", msg, 0)
-            --         end
-            --         system_service.system_call(cb, payload)
-            --     end
+        elseif event == "recv" then
+            print(topic, payload)
         elseif event == "sent" then
             sys.publish("mqtt_sent")
         elseif event == "disconnect" then
@@ -160,49 +153,42 @@ sys.taskInit(function()
         power.internal.enable()
         power.external.enable()
         sys.wait(10 * 1000)
+
         do
+            local vbat = power.internal.vbat()
+            local lat_lon = sensors.infrastructure.Gps:read()
+
+            local telemetry = {
+                msg_type = "diagnosis",
+                vbat = vbat,
+                lat_lon = lat_lon,
+            }
+            mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+        end
+
+        do
+            local telemetry = {
+                msg_type = "data",
+                sensors = {},
+            }
             for index, sensor in ipairs(detected_sensors) do
                 log.info("main", "run", "index", index)
                 local info = sensor:info()
                 local data = sensor:run()
-
-                local telemetry = {
-                    msg_type = "read",
+                local sensor_telemetry = {
                     model = info.model,
                     interface = info.interface,
                     address = info.address,
                     data = data
                 }
-                mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+                table.insert(telemetry.sensors, sensor_telemetry)
             end
+            mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
         end
 
         sys.wait(2 * 1000)
         power.internal.disable()
         power.external.disable()
-        -- #######################################################################
-
-        sys.wait(2 * 1000)
-
-        -- #######################################################################
-        -- diagnose
-        -- #######################################################################
-        power.internal.enable()
-        sys.wait(1 * 1000)
-
-        do
-            local vbat = power.internal.vbat()
-
-            local telemetry = {
-                msg_type = "diagnose",
-                vbat = vbat,
-            }
-            mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
-        end
-
-        sys.wait(1 * 1000)
-        power.internal.disable()
-        -- #######################################################################
 
         sys.wait(60 * 60 * 1000)
     end

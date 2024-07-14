@@ -1,5 +1,6 @@
 local sensors = {}
 sensors.sensor_classes = {}
+sensors.infrastructure = {}
 
 local UART_ID = 1
 local modbus = require("modbus")
@@ -16,7 +17,7 @@ end
 -- ##############################################################################################################################
 
 local Gps = {}
-sensors.sensor_classes.Gps = Gps
+sensors.infrastructure.Gps = Gps
 
 local function read_gps()
     local ret, size, data = modbus.read_register(UART_ID, 0x01, 0x03, 0xC8, 0x0D) -- 13 words, 26 bytes
@@ -55,44 +56,18 @@ local function read_gps()
     }
 end
 
-function Gps:info()
-    return info("E108-D01", "rs485", 0x01, {})
-end
-
-function Gps:detect()
-    local obj = {}
-    setmetatable(obj, self)
-    self.__index = self
-
-    for attempt = 1, 5 do
-        log.debug("Gps", "detect", "attempt", attempt)
-        local ret = read_gps()
-        if ret == 0 or ret < -2 then
-            log.debug("Gps", "detect", "detected")
-            return true, obj
-        end
-    end
-
-    log.error("Gps", "detect", "failed")
-    return false
-end
-
-function Gps:run()
+function Gps:read()
     log.info("Gps", "run")
     for attempt = 1, 60 do
         log.debug("Gps", "run", "attempt", attempt)
         local ret, lat_lon = read_gps()
         if ret == 0 then
             assert(lat_lon)
-            log.debug("Gps", "run", "lat", lat_lon["lat"], "lon", lat_lon["lon"])
             return lat_lon
         end
         sys.wait(2000)
     end
     log.error("Gps", "run", "timeout")
-    return {
-        fault = "failed to read GPS"
-    }
 end
 
 -- ##############################################################################################################################

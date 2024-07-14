@@ -138,3 +138,30 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   }
   ```
 - response: device will reboot after applying the new config, server should expect a new logon message
+
+##### REBOOT
+
+- endpoint: `buoys/\<IMEI>/c2d/cmd`
+- msg_type: config
+- schema:
+  ```json
+  {
+    "msg_type": "reboot"
+  }
+  ```
+- response: device will reboot immediately
+
+##### PING
+
+- endpoint: `buoys/\<IMEI>/c2d/cmd`
+- msg_type: config
+- schema:
+  ```json
+  {
+    "msg_type": "ping"
+  }
+  ```
+- response:
+  ```json
+  { "msg_type": "ping", "imei": "<IMEI>" }
+  ```

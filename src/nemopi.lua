@@ -109,6 +109,14 @@ sys.taskInit(function()
                     else
                         log.error("c2d", "config", "failed to set config")
                     end
+                elseif telemetry["msg_type"] == "reboot" then
+                    rtos.reboot()
+                elseif telemetry["msg_type"] == "ping" then
+                    local telemetry = {
+                        msg_type = "ping",
+                        imei = imei,
+                    }
+                    mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
                 end
             end
         elseif event == "sent" then

@@ -96,9 +96,18 @@ sys.taskInit(function()
                 if telemetry["msg_type"] == "credentials" then
                     local ret = utils.fskv_set_credentials(telemetry["credentials"])
                     if ret then
-                        utils.reboot_with_delay(1000)
+                        log.error("c2d", "credentials", "updated")
+                        rtos.reboot()
                     else
                         log.error("c2d", "credentials", "failed to set credentials")
+                    end
+                elseif telemetry["msg_type"] == "config" then
+                    local ret = utils.fskv_set_config(telemetry["config"])
+                    if ret then
+                        log.error("c2d", "config", "updated")
+                        rtos.reboot()
+                    else
+                        log.error("c2d", "config", "failed to set config")
                     end
                 end
             end
@@ -114,6 +123,14 @@ sys.taskInit(function()
     mqttc:connect()
     sys.waitUntil("mqtt_sent")
     log.info("mqtt", "connect", "ready")
+
+    -- load system configuration
+    local ret, config = utils.fskv_get_config()
+    if not ret then
+        log.error("config", "failed to read system config")
+        utils.reboot_with_delay(30 * 60 * 1000)
+    end
+    assert(config, "invalid config")
 
     -- start sensoring task
     local UART_ID = 1
@@ -157,9 +174,6 @@ sys.taskInit(function()
     sys.wait(2000)
 
     while 1 do
-        -- #######################################################################
-        -- telemetry
-        -- #######################################################################
         power.internal.enable()
         power.external.enable()
         sys.wait(10 * 1000)
@@ -200,7 +214,10 @@ sys.taskInit(function()
         power.internal.disable()
         power.external.disable()
 
-        sys.wait(60 * 60 * 1000)
+        log.info("lua", rtos.meminfo("lua"))
+        log.info("sys", rtos.meminfo("sys"))
+
+        sys.wait(config["read_interval_ms"])
     end
 end)
 

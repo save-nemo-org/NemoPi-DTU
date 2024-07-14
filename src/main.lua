@@ -1,4 +1,4 @@
--- Required by LuaTools for firmware generation 
+-- Required by LuaTools for firmware generation
 PROJECT = "nemopi-dtu"
 VERSION = "0.0.1"
 
@@ -7,7 +7,7 @@ _G.sysplus = require("sysplus")
 
 -- log.setLevel(log.LOG_INFO)
 
--- Disable power key debouncing 
+-- Disable power key debouncing
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)
 end
@@ -31,17 +31,17 @@ local nemopi = require("nemopi")
 -- local NETLED_PIN = 27
 -- netLed.setup(true, NETLED_PIN, nil)
 
-sys.taskInit(function()
-    while 1 do
-        -- Print mem usage, debug only
-        sys.wait(60 * 1000)
+-- sys.taskInit(function()
+--     while 1 do
+--         -- Print mem usage, debug only
+--         sys.wait(60 * 1000)
 
-        log.info("lua", rtos.meminfo("lua"))
-        log.info("sys", rtos.meminfo("sys"))
-    end
-end)
+--         log.info("lua", rtos.meminfo("lua"))
+--         log.info("sys", rtos.meminfo("sys"))
+--     end
+-- end)
 
 -- End of User Code ---------------------------------------------
--- Start scheduler 
+-- Start scheduler
 sys.run()
 -- Don't program after sys.run()

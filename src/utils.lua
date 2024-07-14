@@ -69,6 +69,31 @@ function utils.fskv_get_credentials()
     return true, credentials
 end
 
+function utils.fskv_set_config(config)
+    if type(config) ~= "table" then
+        return false
+    end
+
+    local temp = {}
+
+    local read_interval_ms = config["read_interval_ms"]
+    if type(read_interval_ms) ~= "number" then
+        return false
+    end
+    temp["read_interval_ms"] = read_interval_ms
+
+    assert(fskv.set("config", temp), "failed to set config")
+    return true
+end
+
+function utils.fskv_get_config()
+    local config = fskv.get("config")
+    if config == nil then
+        return false
+    end
+    return true, config
+end
+
 -- download credentials from url and save into fskv
 -- no return value
 function utils.download_credentials(url)
@@ -106,9 +131,8 @@ function utils.reboot_with_delay(wait_ms)
         wait_ms = 1000
     end
     log.info("reboot_with_delay", wait_ms)
-    sys.timerStart(function()
-        rtos.reboot()
-    end, wait_ms)
+    sys.wait(wait_ms)
+    rtos.reboot()
 end
 
 return utils

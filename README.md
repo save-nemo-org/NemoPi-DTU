@@ -106,7 +106,7 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
 
 #### C2D Telemetry
 
-##### Diagnosis info
+##### Credentials
 
 - endpoint: `buoys/\<IMEI>/c2d/cmd`
 - msg_type: credentials
@@ -123,3 +123,18 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   }
   ```
 - response: device will reboot after applying the new credentials, server should expect a new logon message with new credentials
+
+##### Config
+
+- endpoint: `buoys/\<IMEI>/c2d/cmd`
+- msg_type: config
+- schema:
+  ```json
+  {
+      "msg_type": "config",
+      "config": {
+          "read_interval_ms": float
+      }
+  }
+  ```
+- response: device will reboot after applying the new config, server should expect a new logon message

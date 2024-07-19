@@ -27,9 +27,13 @@ function power.internal.disable()
 end
 
 function power.internal.vbat()
-    local voltage = adc.get(ADC_ID) * 3300 / 103300
-    log.info("power", "internal", "vbat", voltage)
-    return voltage
+    local result = 0
+    for i = 1, 10 do
+        local voltage = adc.get(ADC_ID) * 3300 / 103300
+        result = result + voltage / 10
+    end
+    log.info("power", "internal", "vbat", result)
+    return result
 end
 
 function power.external.enable()

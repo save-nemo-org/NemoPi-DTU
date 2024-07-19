@@ -12,9 +12,9 @@ if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)
 end
 
--- if rtos.bsp() == "EC618" and pm and pm.WORK_MODE then
---     pm.power(pm.WORK_MODE, 1)
--- end
+if rtos.bsp() == "EC618" and pm and pm.WORK_MODE then
+    pm.power(pm.WORK_MODE, 1)
+end
 
 -- 自动低功耗, 轻休眠模式
 -- Air780E支持uart唤醒和网络数据下发唤醒, 但需要断开USB,或者pm.power(pm.USB, false) 但这样也看不到日志了

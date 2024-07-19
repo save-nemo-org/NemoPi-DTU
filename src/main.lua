@@ -26,11 +26,6 @@ socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
 
 local nemopi = require("nemopi")
 
--- Setup NET LED --
--- local netLed = require("netLed")
--- local NETLED_PIN = 27
--- netLed.setup(true, NETLED_PIN, nil)
-
 -- sys.taskInit(function()
 --     while 1 do
 --         -- Print mem usage, debug only

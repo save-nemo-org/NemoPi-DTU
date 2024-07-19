@@ -55,6 +55,9 @@ function utils.fskv_set_credentials(credentials)
     if type(key) ~= "string" then
         return false
     end
+    if not utils.starts_with(key, "-----BEGIN RSA PRIVATE KEY-----") then
+        return false
+    end
     temp["key"] = key
 
     assert(fskv.set("credentials", temp), "failed to set credentials")

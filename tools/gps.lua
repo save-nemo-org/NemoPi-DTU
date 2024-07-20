@@ -21,7 +21,7 @@ sys.taskInit(function()
     local GPS_UART_ID = 2
     local GPS_BAUD_RATE = 115200
 
-    -- Turn on power 
+    -- Turn on power
     log.info("main", "setup", "gpio", GPS_V_BCKP)
     gpio.setup(GPS_V_BCKP, 1, gpio.PULLUP)
 
@@ -32,9 +32,19 @@ sys.taskInit(function()
     log.info("main", "setup", "uart", GPS_UART_ID, "baudrate", GPS_BAUD_RATE)
 
     uart.setup(GPS_UART_ID, GPS_BAUD_RATE)
-    uart.on(GPS_UART_ID, "receive", function(id, len)
-        local data = uart.read(id, len)
-        log.info("uart", id, len, data)
+    -- uart.on(GPS_UART_ID, "receive", function(id, len)
+    --     local data = uart.read(id, len)
+    --     log.info("uart", id, len, data)
+    -- end)
+
+    libgnss.bind(GPS_UART_ID)
+    libgnss.debug(true) -- print NMEA to log
+    sys.subscribe("GNSS_STATE", function(event, ticks)
+        -- events include:
+        -- FIXED
+        -- LOSE
+        -- ticks is timestampe, normally ignored
+        log.info("gnss", "state", event, ticks)
     end)
 
     log.info("done")

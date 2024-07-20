@@ -11,7 +11,6 @@ if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
 end
 
 rtc.timezone(0)
-socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
 
 sys.taskInit(function()
     -- GPIO mapping see: https://cdn.openluat-luatcommunity.openluat.com/attachment/20240716142135701_Air780E&Air780EG&Air780EX&Air700E_GPIO_table_20240716.pdf
@@ -28,33 +27,36 @@ sys.taskInit(function()
     log.info("main", "setup", "gpio", GPS_3V3)
     gpio.setup(GPS_3V3, 1, gpio.PULLUP)
 
+    pm.power(pm.GPS, false) -- set internal gps power to off for external gps
+
+    -- Setup debug uart
+    uart.setup(1, 115200, 8, 1, uart.NONE)
+
     -- Setup and listen to UART
     log.info("main", "setup", "uart", GPS_UART_ID, "baudrate", GPS_BAUD_RATE)
 
     uart.setup(GPS_UART_ID, GPS_BAUD_RATE)
-    -- uart.on(GPS_UART_ID, "receive", function(id, len)
-    --     local data = uart.read(id, len)
-    --     log.info("uart", id, len, data)
-    -- end)
+    uart.on(GPS_UART_ID, "receive", function(id, len)
+        local data = uart.read(id, len)
+        log.info("uart", id, len, data)
 
-    libgnss.bind(GPS_UART_ID)
-    libgnss.debug(true) -- print NMEA to log
-    sys.subscribe("GNSS_STATE", function(event, ticks)
-        -- events include:
-        -- FIXED
-        -- LOSE
-        -- ticks is timestampe, normally ignored
-        log.info("gnss", "state", event, ticks)
+        uart.write(1, data)
     end)
+
+    -- libgnss.bind(GPS_UART_ID)
+    -- libgnss.debug(true) -- print NMEA to log
+    -- sys.subscribe("GNSS_STATE", function(event, ticks)
+    --     -- events include:
+    --     -- FIXED
+    --     -- LOSE
+    --     -- ticks is timestampe, normally ignored
+    --     log.info("gnss", "state", event, ticks)
+    -- end)
 
     log.info("done")
 
     while 1 do
-        -- Print mem usage, debug only
-        sys.wait(60 * 1000)
-
-        log.info("lua", rtos.meminfo("lua"))
-        log.info("sys", rtos.meminfo("sys"))
+        sys.wait(1000)
     end
 end)
 

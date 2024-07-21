@@ -31,6 +31,7 @@ function power.internal.vbat()
     for i = 1, 10 do
         local voltage = adc.get(ADC_ID) * 3300 / 103300
         result = result + voltage / 10
+        sys.wait(100)
     end
     log.info("power", "internal", "vbat", result)
     return result

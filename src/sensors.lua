@@ -75,20 +75,67 @@ end
 local function read_ds18b20_logger()
     -- read ds18b20 temperature
     local ret, size, data = modbus.read_register(UART_ID, 0x02, 0x04, 0x10, 0x02)
+    local sensor_results = {}
     if not ret then
         log.error("Ds18b20Logger", "read_ds18b20", "failed to read ds18b20 data logger")
-        return false
+        table.insert(sensor_results, {
+            channel = "ch1",
+            value = json.null,
+            fault = "ds18b20 logger unreachable"
+        })
+        table.insert(sensor_results, {
+            channel = "ch2",
+            value = json.null,
+            fault = "ds18b20 logger unreachable"
+        })
+        return false, sensor_results
     end
     if size ~= 4 then
         log.error("Ds18b20Logger", "read_ds18b20", "wrong data size", size)
-        return false
+        table.insert(sensor_results, {
+            channel = "ch1",
+            value = json.null,
+            fault = "ds18b20 logger return data invalid"
+        })
+        table.insert(sensor_results, {
+            channel = "ch2",
+            value = json.null,
+            fault = "ds18b20 logger return data invalid"
+        })
+        return false, sensor_results
     end
 
     local result = { select(2, pack.unpack(data, ">h2")) }
-    return true, {
-        ch1 = result[1] ~= -32768 and { true, result[1] / 10.0 } or { false },
-        ch2 = result[2] ~= -32768 and { true, result[2] / 10.0 } or { false },
-    }
+
+    if result[1] ~= -32768 then
+        table.insert(sensor_results, {
+            channel = "ch1",
+            value = result[1] / 10.0,
+            fault = ""
+        })
+    else
+        table.insert(sensor_results, {
+            channel = "ch1",
+            value = json.null,
+            fault = "sensor unreachable"
+        })
+    end
+    
+    if result[2] ~= -32768 then
+        table.insert(sensor_results, {
+            channel = "ch2",
+            value = result[2] / 10.0,
+            fault = ""
+        })
+    else
+        table.insert(sensor_results, {
+            channel = "ch2",
+            value = json.null,
+            fault = "sensor unreachable"
+        })
+    end
+
+    return true, sensor_results
 end
 
 local Ds18b20Logger = {
@@ -110,12 +157,9 @@ function Ds18b20Logger:detect()
         return false
     end
 
-    assert(result)
-
     log.debug("Ds18b20Logger", "detect", "detected")
-    obj.feature.ch1 = result.ch1[1]
-    obj.feature.ch2 = result.ch2[1]
-
+    obj.feature.ch1 = result[1]["value"] ~= json.null
+    obj.feature.ch2 = result[2]["value"] ~= json.null
     return true, obj
 end
 
@@ -127,17 +171,9 @@ function Ds18b20Logger:run()
     log.info("Ds18b20Logger", "run")
 
     local ret, result = read_ds18b20_logger()
-    if not ret then
-        return {
-            fault = "failed to read ds18b20 logger"
-        }
-    end
-
-    assert(result)
-    return {
-        ch1 = result.ch1[1] and result.ch1[2] or nil,
-        ch2 = result.ch2[1] and result.ch2[2] or nil,
-    }
+    assert(ret ~= nil)
+    assert(result ~= nil)
+    return result
 end
 
 return sensors

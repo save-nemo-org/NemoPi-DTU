@@ -1,0 +1,15 @@
+{
+    "Lua.diagnostics.globals": [
+        "log",
+        "rtos",
+        "mqtt",
+        "pwm",
+        "mobile",
+        "fskv",
+        "crypto",
+        "sms",
+        "json",
+        "socket",
+        "pack"
+    ]
+}

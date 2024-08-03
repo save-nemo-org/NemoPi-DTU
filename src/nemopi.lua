@@ -114,6 +114,8 @@ sys.taskInit(function()
                     else
                         log.error("c2d", "config", "failed to set config")
                     end
+                elseif telemetry["msg_type"] == "ota" then
+                    utils.ota(telemetry["url"])
                 elseif telemetry["msg_type"] == "reboot" then
                     rtos.reboot()
                 elseif telemetry["msg_type"] == "ping" then

@@ -28,6 +28,8 @@ local function sms_setup()
             rtos.reboot()
         elseif cmd == "CREDENTIALS" then
             utils.download_credentials(args[1])
+        elseif cmd == "OTA" then
+            utils.ota(args[1])
         end
     end)
 end
@@ -36,6 +38,8 @@ sys.taskInit(function()
     assert(crypto.cipher_suites, "firmware missing crypto.cipher_suites support")
     assert(mqtt, "firmware missing mqtt support")
     assert(fskv, "firmware missing fskv support")
+
+    pwm.open(4, 1, 50)
 
     -- setup database
     utils.fskv_setup()
@@ -70,6 +74,7 @@ sys.taskInit(function()
         log.error("mqtt", "failed to get mqtt credentials")
         utils.reboot_with_delay(30 * 60 * 1000)
     end
+    assert(credentials ~= nil)
 
     -- setup mqtt
     local mqttc = mqtt.create(nil, mqtt_host, mqtt_port, {

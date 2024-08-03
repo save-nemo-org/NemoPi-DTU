@@ -41,3 +41,6 @@ luac.out
 
 # certs
 certs/*
+
+# ota
+ota/*

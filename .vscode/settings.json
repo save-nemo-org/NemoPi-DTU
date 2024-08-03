@@ -11,6 +11,7 @@
         "json",
         "socket",
         "pack",
-        "pm"
+        "pm",
+        "http"
     ]
 }

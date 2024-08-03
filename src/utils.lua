@@ -1,5 +1,7 @@
 local utils = {}
 
+local libfota = require("libfota")
+
 function utils.starts_with(str, start)
     return str:sub(1, #start) == start
 end
@@ -136,6 +138,27 @@ function utils.reboot_with_delay(wait_ms)
     log.info("reboot_with_delay", wait_ms)
     sys.wait(wait_ms)
     rtos.reboot()
+end
+
+function utils.ota(url)
+    if type(url) ~= "string" then
+        log.error("ota", "invalid ota url")
+        return
+    end
+    -- use .bin file generated from luatools
+    if not utils.starts_with(url, "http://") and not utils.starts_with(url, "https://") then
+        log.error("ota", "unsupported ota url")
+        return
+    end
+    local function fota_cb(ret)
+        if ret == 0 then
+            log.info("ota", "ota complete, reboot!")
+            rtos.reboot()
+        else
+            log.error("ota", "failed to perform ota with url " .. url)
+        end
+    end
+    libfota.request(fota_cb, url)
 end
 
 return utils

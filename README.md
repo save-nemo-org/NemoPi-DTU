@@ -65,7 +65,7 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
     "sensors": [
       {
         "model": "DS18B20-LOGGER",
-        "feature": { "ch2": bool, "ch1": bool },
+        "feature": { "ch2": true, "ch1": false },
         "address": 2,
         "interface": "rs485"
       }
@@ -80,26 +80,26 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
 - schema:
   ```json
   {
-  	"msg_type": "data",
-  	"sensors": [
-  		{
-  			"model": "DS18B20-LOGGER",
+    "msg_type": "data",
+    "sensors": [
+      {
+        "model": "DS18B20-LOGGER",
         "interface": "rs485",
         "address": 2,
-  			"data": [
-  				{
-  					"channel": "ch1",
-  					"value": float or null,
-            "fault": string (empty string when no fault detected)
-  				},
-  				{
+        "data": [
+          {
+            "channel": "ch1",
+            "value": 1.234, // float or null
+            "fault": "string (empty string when no fault detected)"
+          },
+          {
             "channel": "ch2",
-            "value": float or null,
-  					"fault": string (empty string when no fault detected)
-  				}
-  			]
-  		}
-  	]
+            "value": null, // float or null
+            "fault": "string (empty string when no fault detected)"
+          }
+        ]
+      }
+    ]
   }
   ```
 

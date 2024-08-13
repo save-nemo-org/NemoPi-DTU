@@ -4,6 +4,7 @@ local utils = require("utils")
 local modbus = require("modbus")
 local power = require("power")
 local sensors = require("sensors")
+local led = require("led")
 
 local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
 local mqtt_port = 8883
@@ -39,8 +40,6 @@ sys.taskInit(function()
     assert(mqtt, "firmware missing mqtt support")
     assert(fskv, "firmware missing fskv support")
 
-    pwm.open(4, 1, 50)
-
     -- setup database
     utils.fskv_setup()
 
@@ -49,6 +48,7 @@ sys.taskInit(function()
 
     -- mobile.setAuto(check_sim_period, get_cell_period, search_cell_time, auto_reset_stack, network_check_period)
     mobile.setAuto(10 * 1000, 5 * 60 * 1000, 5, true, 5 * 60 * 1000)
+    led.setMode(led.WAIT_FOR_NETWORK)
 
     -- setup internet access
     log.info("ip", "wait")
@@ -67,6 +67,7 @@ sys.taskInit(function()
         utils.reboot_with_delay()
     end
     log.info("ntp", "ready")
+    led.setMode(led.NETWORK_CONNECTED)
 
     -- get credentials
     local ret, credentials = utils.fskv_get_credentials()
@@ -93,6 +94,8 @@ sys.taskInit(function()
             local telemetry = {
                 msg_type = "connect",
                 imei = imei,
+                firmware = rtos.firmware(),
+                version = VERSION,
             }
             mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
         elseif event == "recv" then
@@ -138,6 +141,7 @@ sys.taskInit(function()
     mqttc:connect()
     sys.waitUntil("mqtt_sent")
     log.info("mqtt", "connect", "ready")
+    led.setMode(led.MQTT_CONNECTED)
 
     -- load system configuration
     local ret, config = utils.fskv_get_config()
@@ -189,6 +193,7 @@ sys.taskInit(function()
     sys.wait(2000)
 
     while 1 do
+        led.setMode(led.RUNNING)
         power.internal.enable()
         power.external.enable()
         sys.wait(10 * 1000)
@@ -228,6 +233,7 @@ sys.taskInit(function()
         sys.wait(2 * 1000)
         power.internal.disable()
         power.external.disable()
+        led.setMode(led.MQTT_CONNECTED)
 
         log.info("lua", rtos.meminfo("lua"))
         log.info("sys", rtos.meminfo("sys"))

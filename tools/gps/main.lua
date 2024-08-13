@@ -15,19 +15,23 @@ rtc.timezone(0)
 sys.taskInit(function()
     -- GPIO mapping see: https://cdn.openluat-luatcommunity.openluat.com/attachment/20240716142135701_Air780E&Air780EG&Air780EX&Air700E_GPIO_table_20240716.pdf
 
-    local GPS_V_BCKP = 23 -- AGPIO3 - GPIO23
+    local GPS_V_BCKP = 21 -- AGPIOWU1 - GPIO21
+    local GPS_V_BCKP2 = 23 -- AGPIO3 - GPIO23
     local GPS_3V3 = 25    -- AGPIO5 - GPIO25
     local GPS_UART_ID = 2
     local GPS_BAUD_RATE = 115200
+
+    pm.power(pm.GPS, false) -- set internal gps power to off for external gps
 
     -- Turn on power
     log.info("main", "setup", "gpio", GPS_V_BCKP)
     gpio.setup(GPS_V_BCKP, 1, gpio.PULLUP)
 
+    log.info("main", "setup", "gpio", GPS_V_BCKP2)
+    gpio.setup(GPS_V_BCKP2, 1, gpio.PULLUP)
+
     log.info("main", "setup", "gpio", GPS_3V3)
     gpio.setup(GPS_3V3, 1, gpio.PULLUP)
-
-    pm.power(pm.GPS, false) -- set internal gps power to off for external gps
 
     -- Setup debug uart
     uart.setup(1, 115200, 8, 1, uart.NONE)

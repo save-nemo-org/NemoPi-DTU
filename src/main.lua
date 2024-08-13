@@ -17,6 +17,9 @@ if rtos.bsp() == "EC618" and pm and pm.WORK_MODE then
     pm.request(pm.LIGHT)
 end
 
+-- reboot every 24 hours
+sys.timerStart(rtos.reboot, 24 * 3600 * 1000)
+
 rtc.timezone(0)
 socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
 

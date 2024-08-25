@@ -35,6 +35,12 @@ local function sms_setup()
     end)
 end
 
+local function sendTelemetry(client, msg_type, body)
+    local telemetry = body
+    telemetry["msg_type"] = msg_type
+    client:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+end
+
 sys.taskInit(function()
     assert(crypto.cipher_suites, "firmware missing crypto.cipher_suites support")
     assert(mqtt, "firmware missing mqtt support")
@@ -60,7 +66,7 @@ sys.taskInit(function()
     log.info("ip", "ready")
 
     -- sync system time
-    socket.sntp({ "0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com" }, socket.LWIP_GP)
+    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"}, socket.LWIP_GP)
     local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
     if not ret then
         log.error("ntp", "failed")
@@ -84,20 +90,19 @@ sys.taskInit(function()
         verify = 0
     })
     mqttc:auth(imei, credentials["username"], credentials["password"], true) -- client_id must have value, the last parameter true is for clean session
-    mqttc:keepalive(60)                                                      -- default value 240s
-    mqttc:autoreconn(true, 3000)                                             -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures
+    mqttc:keepalive(60) -- default value 240s
+    mqttc:autoreconn(true, 3000) -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures
     mqttc:debug(false)
 
     mqttc:on(function(mqtt_client, event, topic, payload)
         if event == "conack" then
             mqttc:subscribe(sub_topic .. "/#")
-            local telemetry = {
-                msg_type = "connect",
+            local payload = {
                 imei = imei,
                 firmware = rtos.firmware(),
-                version = VERSION,
+                version = VERSION
             }
-            mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+            sendTelemetry(mqttc, "connect", payload)
         elseif event == "recv" then
             if utils.ends_with(topic, "/cmd") then
                 local telemetry = json.decode(payload)
@@ -122,11 +127,11 @@ sys.taskInit(function()
                 elseif telemetry["msg_type"] == "reboot" then
                     rtos.reboot()
                 elseif telemetry["msg_type"] == "ping" then
-                    local telemetry = {
+                    local payload = {
                         msg_type = "ping",
-                        imei = imei,
+                        imei = imei
                     }
-                    mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+                    sendTelemetry(mqttc, "ping", payload)
                 end
             end
         elseif event == "sent" then
@@ -167,9 +172,8 @@ sys.taskInit(function()
 
     local detected_sensors = {}
     do
-        local telemetry = {
-            msg_type = "detect",
-            sensors = {},
+        local payload = {
+            sensors = {}
         }
 
         log.info("main", "detect")
@@ -179,11 +183,11 @@ sys.taskInit(function()
             if ret then
                 log.info("main", "detected", name)
                 table.insert(detected_sensors, detected)
-                table.insert(telemetry.sensors, detected:info())
+                table.insert(payload.sensors, detected:info())
             end
         end
 
-        mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+        sendTelemetry(mqttc, "detect", payload)
     end
 
     sys.wait(2000)
@@ -202,18 +206,16 @@ sys.taskInit(function()
             local vbat = power.internal.vbat()
             local lat_lon = sensors.infrastructure.Gps:read()
 
-            local telemetry = {
-                msg_type = "diagnosis",
+            local payload = {
                 vbat = vbat,
-                lat_lon = lat_lon,
+                lat_lon = lat_lon
             }
-            mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+            sendTelemetry(mqttc, "diagnosis", payload)
         end
 
         do
-            local telemetry = {
-                msg_type = "data",
-                sensors = {},
+            local payload = {
+                sensors = {}
             }
             for index, sensor in ipairs(detected_sensors) do
                 log.info("main", "run", "index", index)
@@ -225,9 +227,9 @@ sys.taskInit(function()
                     address = info.address,
                     data = data
                 }
-                table.insert(telemetry.sensors, sensor_telemetry)
+                table.insert(payload.sensors, sensor_telemetry)
             end
-            mqttc:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+            sendTelemetry(mqttc, "data", payload)
         end
 
         sys.wait(2 * 1000)

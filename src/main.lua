@@ -20,6 +20,7 @@ end
 -- reboot every 24 hours
 sys.timerStart(rtos.reboot, 24 * 3600 * 1000)
 
+mobile.apn(0, 1, "hologram", "", "", nil, 0)
 rtc.timezone(0)
 socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
 

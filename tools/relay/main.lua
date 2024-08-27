@@ -1,23 +1,13 @@
 --[[
 socket客户端演示
 
-包括但不限于以下模组
-1. EC618系列 -- Air780E/Air780EG/Air600E/Air700E
-2. ESP32系列 -- ESP32C3/ESP32S3/ESP32C2
-3. Air105搭配W5500
-4. 其他适配了socket层的bsp
-
-支持的协议有: TCP/UDP/TLS-TCP/DTLS, 更高层级的协议,如http有单独的库
+支持的协议有: TCP/UDP/TLS-TCP/DTLS
 
 提示: 
 1. socket支持多个连接的, 通常最多支持8个, 可通过不同的taskName进行区分
 2. 支持与http/mqtt/websocket/ftp库同时使用, 互不干扰
 3. 支持IP和域名, 域名是自动解析的, 但解析域名也需要耗时
 4. 加密连接(TLS/SSL)需要更多内存, 这意味着能容纳的连接数会小很多, 同时也更慢
-
-对于多个网络出口的场景, 例如Air780E+W5500组成4G+以太网:
-1. 在socket.create函数设置网络适配器的id
-2. 请到同级目录查阅更细致的demo
 
 如需使用ipv6, 请查阅 demo/ipv6, 本demo只涉及ipv4
 ]] -- LuaTools需要PROJECT和VERSION这两个信息
@@ -41,15 +31,15 @@ end
 -- =============================================================
 -- 测试网站 https://netlab.luatos.com/ 点击 打开TCP 获取测试端口号
 -- 要按实际情况修改
-local host = "115.64.114.211" -- 服务器ip或者域名, 都可以的
+local host = "203.220.179.26" -- 服务器ip或者域名, 都可以的
 local port = 7777 -- 服务器端口号
-local is_udp = false -- 如果是UDP, 要改成true, false就是TCP
+local is_udp = true -- 如果是UDP, 要改成true, false就是TCP
 local is_tls = false -- 加密与否, 要看服务器的实际情况
 -- =============================================================
 
 -- 处理未识别的网络消息
 local function netCB(msg)
-    -- log.info("未处理消息", msg[1], msg[2], msg[3], msg[4])
+    log.info("未处理消息", msg[1], msg[2], msg[3], msg[4])
 end
 
 uart.setup(uart_id, 115200) -- 注意, 是UART1, 不是虚拟串口, 演示目的
@@ -117,7 +107,7 @@ function sockettask(d1Name, txqueue, rxtopic)
         local result = libnet.connect(d1Name, 15000, netc, host, port)
         if result then
             log.info("socket", "服务器连上了")
-            -- libnet.tx(d1Name, 0, netc, "helloworld")
+            libnet.tx(d1Name, 0, netc, "helloworld")
         else
             log.info("socket", "服务器没连上了!!!")
         end

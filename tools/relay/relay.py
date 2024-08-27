@@ -1,65 +1,65 @@
 import socket
 import threading
 
-# Define the TCP and UDP server addresses
-TCP_SERVER_IP = '0.0.0.0'
-TCP_SERVER_PORT = 7777
-UDP_SERVER_IP = '0.0.0.0'
-UDP_SERVER_PORT = 6000
+# Define the UDP server addresses and ports for both connections
+UDP_SERVER_1_IP = '0.0.0.0'
+UDP_SERVER_1_PORT = 7777
+UDP_SERVER_2_IP = '0.0.0.0'
+UDP_SERVER_2_PORT = 6000
 
-# Create the TCP server socket
-tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-tcp_server_socket.bind((TCP_SERVER_IP, TCP_SERVER_PORT))
-tcp_server_socket.listen(1)
+# Create the UDP server sockets
+udp_server_socket_1 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+udp_server_socket_1.bind((UDP_SERVER_1_IP, UDP_SERVER_1_PORT))
 
-# Create the UDP server socket
-udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-udp_server_socket.bind((UDP_SERVER_IP, UDP_SERVER_PORT))
+udp_server_socket_2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+udp_server_socket_2.bind((UDP_SERVER_2_IP, UDP_SERVER_2_PORT))
 
-# Global variable to store the UDP client address
-udp_client_address = None
-# Lock to ensure thread-safe access to udp_client_address
-udp_client_address_lock = threading.Lock()
+# Global variables to store the UDP client addresses
+udp_client_address_1 = None
+udp_client_address_2 = None
+# Locks to ensure thread-safe access to udp_client_address
+udp_client_address_lock_1 = threading.Lock()
+udp_client_address_lock_2 = threading.Lock()
 
-# Function to handle communication from TCP to UDP
-def tcp_to_udp(client_socket):
-    global udp_client_address
+# Function to handle communication from UDP 1 to UDP 2
+def udp1_to_udp2():
+    global udp_client_address_1
     while True:
         try:
-            data = client_socket.recv(1024)
-            print("TCP", data)
-            if not data:
-                break
-            with udp_client_address_lock:
-                if udp_client_address:
-                    udp_server_socket.sendto(data, udp_client_address)
+            data, addr = udp_server_socket_1.recvfrom(1024)
+            print("UDP 1 received:", data)
+            with udp_client_address_lock_1:
+                udp_client_address_1 = addr
+            with udp_client_address_lock_2:
+                if udp_client_address_2:
+                    udp_server_socket_2.sendto(data, udp_client_address_2)
         except Exception as e:
-            print(f"TCP to UDP forwarding error: {e}")
+            print(f"UDP 1 to UDP 2 forwarding error: {e}")
             break
-    client_socket.close()
 
-# Function to handle communication from UDP to TCP
-def udp_to_tcp(client_socket):
-    global udp_client_address
+# Function to handle communication from UDP 2 to UDP 1
+def udp2_to_udp1():
+    global udp_client_address_2
     while True:
         try:
-            data, addr = udp_server_socket.recvfrom(1024)
-            print("UDP", data)
-            with udp_client_address_lock:
-                udp_client_address = addr
-            client_socket.sendall(data)
+            data, addr = udp_server_socket_2.recvfrom(1024)
+            print("UDP 2 received:", data)
+            with udp_client_address_lock_2:
+                udp_client_address_2 = addr
+            with udp_client_address_lock_1:
+                if udp_client_address_1:
+                    udp_server_socket_1.sendto(data, udp_client_address_1)
         except Exception as e:
-            print(f"UDP to TCP forwarding error: {e}")
+            print(f"UDP 2 to UDP 1 forwarding error: {e}")
             break
 
 def main():
-    print(f"TCP server listening on {TCP_SERVER_IP}:{TCP_SERVER_PORT}")
-    client_socket, client_address = tcp_server_socket.accept()
-    print(f"TCP connection from {client_address} accepted.")
+    print(f"UDP server 1 listening on {UDP_SERVER_1_IP}:{UDP_SERVER_1_PORT}")
+    print(f"UDP server 2 listening on {UDP_SERVER_2_IP}:{UDP_SERVER_2_PORT}")
 
     # Start threads to handle bidirectional forwarding
-    threading.Thread(target=tcp_to_udp, args=(client_socket,)).start()
-    threading.Thread(target=udp_to_tcp, args=(client_socket,)).start()
+    threading.Thread(target=udp1_to_udp2).start()
+    threading.Thread(target=udp2_to_udp1).start()
 
 if __name__ == "__main__":
     main()

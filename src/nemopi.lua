@@ -205,10 +205,12 @@ sys.taskInit(function()
         do
             local vbat = power.internal.vbat()
             local lat_lon = sensors.infrastructure.Gps:read()
+            local cell = utils.cell_info()
 
             local payload = {
                 vbat = vbat,
-                lat_lon = lat_lon
+                lat_lon = lat_lon,
+                cell = cell
             }
             sendTelemetry(mqttc, "diagnosis", payload)
         end

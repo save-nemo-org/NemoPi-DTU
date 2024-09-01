@@ -161,4 +161,15 @@ function utils.ota(url)
     libfota.request(fota_cb, url)
 end
 
+function utils.cell_info()
+    mobile.reqCellInfo(60)
+    if not sys.waitUntil("CELL_INFO_UPDATE", 60 * 1000) then
+        log.error("cellinfo", "timeout")
+        return json.null
+    end
+    local info = mobile.getCellInfo()
+    log.info("cell", json.encode(info))
+    return info
+end
+
 return utils

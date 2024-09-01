@@ -1,18 +1,23 @@
 local modbus = {}
+modbus.debug = false
 
 local function modbus_send(uart_id, slaveaddr, instruction, regaddr, value)
     local data = (string.format("%02x", slaveaddr) .. string.format("%02x", instruction) ..
         string.format("%04x", regaddr) .. string.format("%04x", value)):fromHex()
     local crc_data = pack.pack("<H", crypto.crc16("MODBUS", data))
     local data_tx = data .. crc_data
-    log.debug("modbus", "send", "data", data_tx:toHex())
+    if modbus.debug then
+        log.debug("modbus", "send", "data", data_tx:toHex())
+    end
     uart.write(uart_id, data_tx)
 end
 
 local function modbus_recv(uart_id, expected_slaveaddr, expected_instruction)
     local len = uart.rxSize(uart_id)
     local data = uart.read(uart_id, len)
-    log.debug("modbus", "recv", "len", len, "data", data:toHex())
+    if modbus.debug then
+        log.debug("modbus", "recv", "len", len, "data", data:toHex())
+    end
 
     if len < 3 then
         log.error("modbus", "recv", "modbus frame too short", len)
@@ -41,7 +46,9 @@ local function modbus_recv(uart_id, expected_slaveaddr, expected_instruction)
     end
 
     data = data:sub(4, 3 + size) -- data slice
-    log.debug("modbus", "recv", "unpack", "slaveaddr", slaveaddr, "instruction", instruction, "size", size)
+    if modbus.debug then
+        log.debug("modbus", "recv", "unpack", "slaveaddr", slaveaddr, "instruction", instruction, "size", size)
+    end
 
     return true, slaveaddr, instruction, size, data
 end

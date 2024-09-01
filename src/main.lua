@@ -10,12 +10,12 @@ if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)
 end
 
-if rtos.bsp() == "EC618" and pm and pm.WORK_MODE then
-    log.setLevel(log.LOG_INFO)
-    pm.power(pm.WORK_MODE, 1)
-    pm.power(pm.USB, false)
-    pm.request(pm.LIGHT)
-end
+-- if rtos.bsp() == "EC618" and pm and pm.WORK_MODE then
+--     log.setLevel(log.LOG_INFO)
+--     pm.power(pm.WORK_MODE, 1)
+--     pm.power(pm.USB, false)
+--     pm.request(pm.LIGHT)
+-- end
 
 -- reboot every 24 hours
 sys.timerStart(rtos.reboot, 24 * 3600 * 1000)

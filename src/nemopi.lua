@@ -100,7 +100,9 @@ sys.taskInit(function()
             local payload = {
                 imei = imei,
                 firmware = rtos.firmware(),
-                version = VERSION
+                version = VERSION,
+                ticks = mcu.ticks(),
+                power_on_reason = {pm.lastReson()},
             }
             sendTelemetry(mqttc, "connect", payload)
         elseif event == "recv" then

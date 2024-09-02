@@ -155,7 +155,7 @@ function utils.ota(url)
             log.info("ota", "ota complete, reboot!")
             rtos.reboot()
         else
-            log.error("ota", "failed to perform ota with url " .. url)
+            log.error("ota", "ota failed with error code", ret, "url", url)
         end
     end
     libfota.request(fota_cb, url)

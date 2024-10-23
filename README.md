@@ -51,7 +51,14 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
 - msg_type: connection
 - schema:
   ```json
-  { "msg_type": "connect", "imei": "<IMEI>" }
+  {
+    "msg_type": "connect",
+    "firmware": str,
+    "ticks": int,
+    "imei": str,
+    "power_on_reason": [int, int, int],
+    "version": "x.x.x"
+  }
   ```
 
 ##### Sensor detection (once every boot up)
@@ -111,8 +118,12 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   ```json
   {
     "msg_type": "diagnosis",
-    "lat_lon": { "lon": float, "lat": float },
-    "vbat": 12.3949661
+    "lat_lon": {
+      "lon": float,
+      "lat": float
+    },
+    "vbat": float,
+    "cell": [<Tower Info Dict>, <Tower Info Dict>, ...]
   }
   ```
 

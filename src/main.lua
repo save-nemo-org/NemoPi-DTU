@@ -5,10 +5,18 @@ VERSION = "0.0.1"
 _G.sys = require("sys")
 _G.sysplus = require("sysplus")
 
+log.setLevel(log.LOG_INFO)
+
 -- Disable power key debouncing
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)
 end
+
+-- wdt timeout 9s
+assert(wdt, "missing wdt module support")
+wdt.init(9000)
+-- feed every 3s
+sys.timerLoopStart(wdt.feed, 3000) 
 
 -- if rtos.bsp() == "EC618" and pm and pm.WORK_MODE then
 --     log.setLevel(log.LOG_INFO)

@@ -111,29 +111,56 @@ sys.taskInit(function()
                 if telemetry["msg_type"] == "credentials" then
                     local ret = utils.fskv_set_credentials(telemetry["credentials"])
                     if ret then
-                        log.error("c2d", "credentials", "updated")
-                        rtos.reboot()
+                        log.warn("c2d", "credentials", "updated")
+                        payload = {
+                            cmd = "credentials",
+                            status = "ok"
+                        }
+                        sendTelemetry(mqttc, "cmd", payload)
+                        utils.reboot_with_delay(60)
                     else
                         log.error("c2d", "credentials", "failed to set credentials")
+                        payload = {
+                            cmd = "credentials",
+                            status = "failed"
+                        }
+                        sendTelemetry(mqttc, "cmd", payload)
                     end
                 elseif telemetry["msg_type"] == "config" then
                     local ret = utils.fskv_set_config(telemetry["config"])
                     if ret then
-                        log.error("c2d", "config", "updated")
-                        rtos.reboot()
+                        log.warn("c2d", "config", "updated")
+                        payload = {
+                            cmd = "config",
+                            status = "ok"
+                        }
+                        sendTelemetry(mqttc, "cmd", payload)
+                        utils.reboot_with_delay(60)
                     else
                         log.error("c2d", "config", "failed to set config")
+                        payload = {
+                            cmd = "config",
+                            status = "failed"
+                        }
+                        sendTelemetry(mqttc, "cmd", payload)
                     end
                 elseif telemetry["msg_type"] == "ota" then
                     utils.ota(telemetry["url"])
                 elseif telemetry["msg_type"] == "reboot" then
-                    rtos.reboot()
-                elseif telemetry["msg_type"] == "ping" then
-                    local payload = {
-                        msg_type = "ping",
-                        imei = imei
+                    log.warn("c2d", "reboot", "okay")
+                    payload = {
+                        cmd = "reboot",
+                        status = "ok"
                     }
-                    sendTelemetry(mqttc, "ping", payload)
+                    sendTelemetry(mqttc, "cmd", payload)
+                    utils.reboot_with_delay(60)
+                elseif telemetry["msg_type"] == "ping" then
+                    log.warn("c2d", "ping", "okay")
+                    local payload = {
+                        cmd = "ping",
+                        status = "ok"
+                    }
+                    sendTelemetry(mqttc, "cmd", payload)
                 end
             end
         elseif event == "sent" then

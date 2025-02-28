@@ -1,0 +1,3 @@
+local libfota = {}
+
+return libfota

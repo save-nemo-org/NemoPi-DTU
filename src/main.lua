@@ -7,6 +7,14 @@ _G.sysplus = require("sysplus")
 
 log.setLevel(log.LOG_INFO)
 
+-- Load simulation environment if not on a real device
+if rtos.bsp() == "PC" then
+    log.info("main", "sim", "true")
+    _G.sim = true
+    _G.mobile = require("mobile")
+    _G.sms = require("sms")
+end
+
 -- Disable power key debouncing
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)

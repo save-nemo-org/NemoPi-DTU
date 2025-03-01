@@ -66,7 +66,7 @@ sys.taskInit(function()
     log.info("ip", "ready")
 
     -- sync system time
-    if not sim then
+    if not simulation then
         socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"}, socket.LWIP_GP)
         local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
         if not ret then
@@ -92,6 +92,10 @@ sys.taskInit(function()
         client_key = credentials["key"],
         verify = 0
     })
+    if not mqttc then
+        log.error("mqtt", "failed to create mqtt client")
+        utils.reboot_with_delay(30 * 60 * 1000)
+    end
     mqttc:auth(imei, credentials["username"], credentials["password"], true) -- client_id must have value, the last parameter true is for clean session
     mqttc:keepalive(60) -- default value 240s
     mqttc:autoreconn(true, 3000) -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures

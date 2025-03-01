@@ -9,10 +9,8 @@ log.setLevel(log.LOG_INFO)
 
 -- Load simulation environment if not on a real device
 if rtos.bsp() == "PC" then
-    log.info("main", "sim", "true")
-    _G.sim = true
-    _G.mobile = require("mobile")
-    _G.sms = require("sms")
+    local sim = require("sim")
+    sim.setup()
 end
 
 -- Disable power key debouncing

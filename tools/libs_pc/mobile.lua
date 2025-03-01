@@ -12,4 +12,12 @@ function mobile.setAuto()
 
 end
 
+function mobile.reqCellInfo()
+   sys.publish("CELL_INFO_UPDATE")
+end
+
+function mobile.getCellInfo()
+   return {}
+end
+
 return mobile

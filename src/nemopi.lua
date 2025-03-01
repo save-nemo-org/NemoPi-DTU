@@ -26,7 +26,7 @@ local function sms_setup()
             sms.send(num, "OK", false)
         elseif cmd == "REBOOT" then
             sms.send(num, "OK", false)
-            utils.reboot_with_delay(60 * 1000)
+            utils.reboot_with_delay_nonblocking(60 * 1000)
         elseif cmd == "CREDENTIALS" then
             utils.download_credentials(args[1])
         elseif cmd == "OTA" then
@@ -61,7 +61,7 @@ sys.taskInit(function()
     local ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
     if not ret then
         log.error("ip", "timeout")
-        utils.reboot_with_delay()
+        utils.reboot_with_delay_blocking()
     end
     log.info("ip", "ready")
 
@@ -70,7 +70,7 @@ sys.taskInit(function()
     local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
     if not ret then
         log.error("ntp", "failed")
-        utils.reboot_with_delay()
+        utils.reboot_with_delay_blocking()
     end
     log.info("ntp", "ready")
 
@@ -80,9 +80,8 @@ sys.taskInit(function()
     local ret, credentials = utils.fskv_get_credentials()
     if not ret then
         log.error("mqtt", "failed to get mqtt credentials")
-        utils.reboot_with_delay(30 * 60 * 1000)
+        utils.reboot_with_delay_blocking(30 * 60 * 1000)
     end
-    assert(credentials ~= nil)
 
     -- setup mqtt
     local mqttc = mqtt.create(nil, mqtt_host, mqtt_port, {
@@ -92,7 +91,7 @@ sys.taskInit(function()
     })
     if not mqttc then
         log.error("mqtt", "failed to create mqtt client")
-        utils.reboot_with_delay(30 * 60 * 1000)
+        utils.reboot_with_delay_blocking(30 * 60 * 1000)
     end
     mqttc:auth(imei, credentials["username"], credentials["password"], true) -- client_id must have value, the last parameter true is for clean session
     mqttc:keepalive(60) -- default value 240s
@@ -162,7 +161,7 @@ sys.taskInit(function()
                         status = "ok"
                     }
                     sendTelemetry(mqttc, "cmd", payload)
-                    utils.reboot_with_delay(60 * 1000)
+                    utils.reboot_with_delay_nonblocking(60 * 1000)
                 elseif telemetry["msg_type"] == "ping" then
                     log.warn("c2d", "cmd", "ping", "okay")
                     local payload = {
@@ -190,7 +189,7 @@ sys.taskInit(function()
     local ret, config = utils.fskv_get_config()
     if not ret then
         log.error("config", "failed to read system config")
-        utils.reboot_with_delay(30 * 60 * 1000)
+        utils.reboot_with_delay_blocking(30 * 60 * 1000)
     end
     assert(config, "invalid config")
 

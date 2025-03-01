@@ -11,6 +11,8 @@ function sim.setup()
     -- setup database
     log.info("sim", "setup", "fskv")
     utils.fskv_setup()
+
+    log.info("sim", "setup", "fskv", "credentials")
     local credentials = {
         username = mobile.imei(),
         password = "password",
@@ -19,6 +21,11 @@ function sim.setup()
     }
     local ret = utils.fskv_set_credentials(credentials)
     assert(ret, "failed to set credentials")
+
+    log.info("sim", "setup", "fskv", "config")
+    local config = io.readFile("/luadb/config.json")
+    local ret = utils.fskv_set_config(json.decode(config))
+    assert(ret, "failed to set config")
 end
 
 return sim

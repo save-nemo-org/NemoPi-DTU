@@ -125,25 +125,24 @@ function utils.download_credentials(url)
             log.error("download_credentials", "failed to parse and save credentials")
         end
         log.info("download_credentials", "success")
-
-        utils.reboot_with_delay(1000)
     end)
 end
 
-function utils.reboot_with_delay_nonblocking(wait_ms)
-    sys.taskInit(function()
-        reboot_with_delay(wait_ms)
-    end)
-end
-
-function utils.reboot_with_delay(wait_ms)
+function utils.reboot_with_delay_blocking(wait_ms)
     -- default to 1s for debouncing
     if wait_ms == nil then
         wait_ms = 1000
     end
-    log.info("reboot_with_delay", wait_ms)
+    log.info("reboot_with_delay_blocking", wait_ms)
     sys.wait(wait_ms)
     rtos.reboot()
+end
+
+function utils.reboot_with_delay_nonblocking(wait_ms)
+    log.info("reboot_with_delay_nonblocking", wait_ms)
+    sys.taskInit(function()
+        utils.reboot_with_delay_blocking(wait_ms)
+    end)
 end
 
 function utils.ota(url)

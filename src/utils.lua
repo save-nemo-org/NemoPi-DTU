@@ -130,16 +130,20 @@ function utils.download_credentials(url)
     end)
 end
 
+function utils.reboot_with_delay_nonblocking(wait_ms)
+    sys.taskInit(function()
+        reboot_with_delay(wait_ms)
+    end)
+end
+
 function utils.reboot_with_delay(wait_ms)
     -- default to 1s for debouncing
     if wait_ms == nil then
         wait_ms = 1000
     end
-    sys.taskInit(function()
-        log.info("reboot_with_delay", wait_ms)
-        sys.wait(wait_ms)
-        rtos.reboot()
-    end)
+    log.info("reboot_with_delay", wait_ms)
+    sys.wait(wait_ms)
+    rtos.reboot()
 end
 
 function utils.ota(url)

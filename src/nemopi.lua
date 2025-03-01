@@ -66,15 +66,13 @@ sys.taskInit(function()
     log.info("ip", "ready")
 
     -- sync system time
-    if not simulation then
-        socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"}, socket.LWIP_GP)
-        local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
-        if not ret then
-            log.error("ntp", "failed")
-            utils.reboot_with_delay()
-        end
-        log.info("ntp", "ready")
+    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"})
+    local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
+    if not ret then
+        log.error("ntp", "failed")
+        utils.reboot_with_delay()
     end
+    log.info("ntp", "ready")
 
     led.setMode(led.NETWORK_CONNECTED)
 

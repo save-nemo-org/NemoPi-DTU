@@ -9,7 +9,7 @@ log.setLevel(log.LOG_INFO)
 
 -- Load simulation environment if not on a real device
 if rtos.bsp() == "PC" then
-    local sim = require("sim")
+    _G.sim = loadfile("/luadb/sim.lua")()
     sim.setup()
 end
 
@@ -18,11 +18,10 @@ if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)
 end
 
--- wdt timeout 9s
+-- wdt
 assert(wdt, "missing wdt module support")
-wdt.init(9000)
--- feed every 3s
-sys.timerLoopStart(wdt.feed, 3000) 
+wdt.init(9000) -- wdt timeout 9s
+sys.timerLoopStart(wdt.feed, 3000) -- feed every 3s
 
 -- if rtos.bsp() == "EC618" and pm and pm.WORK_MODE then
 --     log.setLevel(log.LOG_INFO)

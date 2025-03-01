@@ -5,7 +5,6 @@ local mobile = require("mobile")
 
 function sim.setup()
     log.info("sim", "setup")
-    _G.simulation = true
     _G.mobile = require("mobile")
     _G.sms = require("sms")
 

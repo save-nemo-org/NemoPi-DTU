@@ -231,3 +231,13 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
     "status": "ok"
   }
   ```
+
+## Simulatior 
+
+A PC based simulator is available at https://github.com/openLuat/luatos-soc-pc, LuatOS main repo (https://github.com/openLuat/luatos) need to be placed in same folder of luatos-soc-pc. 
+
+Pre-compiled simulator binary: 
+
+```powershell
+.\tools\bin\luatos-lua.exe .\src\ .\tools\libs_pc\
+```

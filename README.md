@@ -145,7 +145,13 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
     }
   }
   ```
-- response: device will reboot after applying the new credentials, server should expect a new logon message with new credentials
+- response: 
+  ```json
+  {
+    "cmd": "credentials",
+    "status": "ok" or "failed"
+  }
+  ```
 
 ##### Config
 
@@ -154,13 +160,20 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
 - schema:
   ```json
   {
-      "msg_type": "config",
-      "config": {
-          "read_interval_ms": float
-      }
+    "msg_type": "config",
+    "config": 
+    {
+      "read_interval_ms": float
+    }
   }
   ```
-- response: device will reboot after applying the new config, server should expect a new logon message
+- response:
+  ```json
+  {
+    "cmd": "config",
+    "status": "ok" or "failed"
+  }
+  ```
 
 ##### Ota
 
@@ -174,7 +187,13 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
       "url": "http:/xxxxx/xxx.bin"
   }
   ```
-- response: device will reboot after applying the new firmware, server should expect a new logon message
+- response:
+  ```json
+  {
+    "cmd": "ota",
+    "status": "ok"
+  }
+  ```
 
 ##### Reboot
 
@@ -186,7 +205,14 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
     "msg_type": "reboot"
   }
   ```
-- response: device will reboot immediately
+- response: 
+  ```json
+  {
+    "cmd": "reboot",
+    "status": "ok"
+  }
+  ```
+  Device will reboot in 60 seconds 
 
 ##### PING
 
@@ -200,5 +226,8 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   ```
 - response:
   ```json
-  { "msg_type": "ping", "imei": "<IMEI>" }
+  {
+    "cmd": "ping",
+    "status": "ok"
+  }
   ```

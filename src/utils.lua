@@ -135,9 +135,11 @@ function utils.reboot_with_delay(wait_ms)
     if wait_ms == nil then
         wait_ms = 1000
     end
-    log.info("reboot_with_delay", wait_ms)
-    sys.wait(wait_ms)
-    rtos.reboot()
+    sys.taskInit(function()
+        log.info("reboot_with_delay", wait_ms)
+        sys.wait(wait_ms)
+        rtos.reboot()
+    end)
 end
 
 function utils.ota(url)

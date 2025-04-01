@@ -35,6 +35,18 @@ function utils.fskv_set_credentials(credentials)
 
     local temp = {}
 
+    local host = credentials["host"]
+    if type(host) ~= "string" then
+        return false
+    end
+    temp["host"] = host
+
+    local port = credentials["port"]
+    if type(port) ~= "number" then
+        return false
+    end
+    temp["port"] = port
+
     local username = credentials["username"]
     if type(username) ~= "string" then
         return false

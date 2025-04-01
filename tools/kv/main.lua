@@ -30,22 +30,26 @@ local function write_fskv()
     log.info("write_fskv", "imei", imei)
 
     -- find <imei>.crt and <imei>.key in /luadb
-    local key_path = "/luadb/" .. imei .. ".key"
     local crt_path = "/luadb/" .. imei .. ".crt"
-    if not io.exists(key_path) or not io.exists(crt_path) then
+    local key_path = "/luadb/" .. imei .. ".key"
+    local cfg_path = "/luadb/" .. imei .. ".json"
+    if not io.exists(key_path) or not io.exists(crt_path) or not io.exists(cfg_path) then
         log.error("key or crt not found")
         return
     else
-        log.info("write_fskv", "key_path", key_path)
         log.info("write_fskv", "crt_path", crt_path)
+        log.info("write_fskv", "key_path", key_path)
+        log.info("write_fskv", "cfg_path", cfg_path)
     end
 
     -- create credentials
     local credentials = {
         username = imei,
         password = "",
-        key = io.readFile(key_path),
         cert = io.readFile(crt_path),
+        key = io.readFile(key_path),
+        host = json.decode(io.readFile(cfg_path))["host"],
+        port = json.decode(io.readFile(cfg_path))["port"],
     }
     log.info("write_fskv", "credentials", json.encode(credentials))
 

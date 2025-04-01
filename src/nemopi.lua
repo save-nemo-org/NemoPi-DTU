@@ -6,8 +6,6 @@ local power = require("power")
 local sensors = require("sensors")
 local led = require("led")
 
-local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
-local mqtt_port = 8883
 local imei = mobile.imei()
 local pub_topic = "buoys/" .. imei .. "/d2c"
 local sub_topic = "buoys/" .. imei .. "/c2d"
@@ -84,7 +82,7 @@ sys.taskInit(function()
     end
 
     -- setup mqtt
-    local mqttc = mqtt.create(nil, mqtt_host, mqtt_port, {
+    local mqttc = mqtt.create(nil, credentials["host"], credentials["port"], {
         client_cert = credentials["cert"],
         client_key = credentials["key"],
         verify = 0

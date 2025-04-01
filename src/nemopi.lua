@@ -110,7 +110,7 @@ sys.taskInit(function()
             }
             sendTelemetry(mqttc, "connect", payload)
         elseif event == "recv" then
-            if utils.ends_with(topic, "/cmd") then
+            if topic:endsWith("/cmd") then
                 local telemetry = json.decode(payload)
                 if telemetry["msg_type"] == "credentials" then
                     local ret = utils.fskv_set_credentials(telemetry["credentials"])

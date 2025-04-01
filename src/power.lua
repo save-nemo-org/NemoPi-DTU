@@ -30,18 +30,23 @@ function power.gps.location()
     pm.power(pm.GPS, true)
     local lat_lon = nil
     for attempt = 1, 60 do
-        if libgnss.isFix() then
-            local lat, lon, speed = libgnss.getIntLocation()
-            lat_lon = {
-                lat = lat / 10000000,
-                lon = lon / 10000000
-            }
-            log.debug("power", "gps", "location", "attempt", attempt, "lat", lat_lon.lat, "lon", lat_lon.lon)
-            break
-        else
-            log.debug("power", "gps", "location", "attempt", attempt, "no fix")
-            sys.wait(5000)
+        if libgnss.isFix() then     -- wait for fix 
+            if libgnss.getGga(2) then   -- wait for GGA
+                sys.wait(10000)         -- wait for another 10s to get a stable GGA
+                local gga = libgnss.getGga(2)
+                lat_lon = {
+                    lat = gga["latitude"],
+                    lon = gga["longitude"],
+                    alt = gga["altitude"],
+                    satellites = gga["satellites_tracked"],
+                    hdop = gga["hdop"],
+                }
+                log.debug("power", "gps", "location", "attempt", attempt, "lat_lon", json.encode(lat_lon))
+                break
+            end
         end
+        log.debug("power", "gps", "location", "attempt", attempt, "no fix")
+        sys.wait(5000)
     end
     pm.power(pm.GPS, false)
 

@@ -203,10 +203,6 @@ sys.taskInit(function()
 
     sys.wait(2 * 1000)
 
-    power.internal.enable()
-    power.external.enable()
-    sys.wait(10 * 1000)
-
     local detected_sensors = {}
     do
         local payload = {
@@ -228,20 +224,14 @@ sys.taskInit(function()
     end
 
     sys.wait(2000)
-    power.internal.disable()
-    power.external.disable()
-
-    sys.wait(2000)
 
     while 1 do
         led.setMode(led.RUNNING)
-        power.internal.enable()
-        power.external.enable()
         sys.wait(10 * 1000)
 
         do
             local vbat = power.internal.vbat()
-            local lat_lon = sensors.infrastructure.Gps:read()
+            local lat_lon = power.gps.location()
             local cell = utils.cell_info()
 
             local payload = {
@@ -272,8 +262,6 @@ sys.taskInit(function()
         end
 
         sys.wait(2 * 1000)
-        power.internal.disable()
-        power.external.disable()
         led.setMode(led.MQTT_CONNECTED)
 
         log.info("lua", rtos.meminfo("lua"))

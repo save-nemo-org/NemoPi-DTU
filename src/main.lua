@@ -23,6 +23,15 @@ assert(wdt, "missing wdt module support")
 wdt.init(9000) -- wdt timeout 9s
 sys.timerLoopStart(wdt.feed, 3000) -- feed every 3s
 
+local air153C_wtd = require ("air153C_wtd")
+sys.taskInit(function ()
+    air153C_wtd.init(28)
+    while 1 do
+        air153C_wtd.feed_dog(28)
+        sys.wait(150 * 1000)
+    end
+end)
+
 -- if rtos.bsp() == "EC618" and pm and pm.WORK_MODE then
 --     log.setLevel(log.LOG_INFO)
 --     pm.power(pm.WORK_MODE, 1)

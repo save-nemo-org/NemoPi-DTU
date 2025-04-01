@@ -2,14 +2,6 @@ local utils = {}
 
 local libfota = require("libfota")
 
-function utils.starts_with(str, start)
-    return str:sub(1, #start) == start
-end
-
-function utils.ends_with(str, ending)
-    return ending == "" or str:sub(- #ending) == ending
-end
-
 function utils.fskv_setup()
     fskv.init()
     local used, total, kv_count = fskv.status()
@@ -69,7 +61,7 @@ function utils.fskv_set_credentials(credentials)
     if type(key) ~= "string" then
         return false
     end
-    if not utils.starts_with(key, "-----BEGIN RSA PRIVATE KEY-----") then
+    if not key:startsWith("-----BEGIN RSA PRIVATE KEY-----") then
         return false
     end
     temp["key"] = key
@@ -118,7 +110,7 @@ function utils.download_credentials(url)
         log.error("download_credentials", "invalid url")
         return
     end
-    if not utils.starts_with(url, "http://") and not utils.starts_with(url, "https://") then
+    if not url:startsWith("http://") and not url:startsWith("https://") then
         log.error("download_credentials", "url has to start with http:// or https://")
         return
     end
@@ -163,7 +155,7 @@ function utils.ota(url)
         return
     end
     -- use .bin file generated from luatools
-    if not utils.starts_with(url, "http://") and not utils.starts_with(url, "https://") then
+    if not url:startsWith("http://") and not url:startsWith("https://") then
         log.error("ota", "unsupported ota url")
         return
     end

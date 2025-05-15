@@ -1,3 +1,0 @@
-local libfota = {}
-
-return libfota

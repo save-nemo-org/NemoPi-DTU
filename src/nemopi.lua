@@ -6,8 +6,6 @@ local power = require("power")
 local sensors = require("sensors")
 local led = require("led")
 
-local mqtt_host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net"
-local mqtt_port = 8883
 local imei = mobile.imei()
 local pub_topic = "buoys/" .. imei .. "/d2c"
 local sub_topic = "buoys/" .. imei .. "/c2d"
@@ -35,6 +33,128 @@ local function sms_setup()
     end)
 end
 
+local function network_setup()
+    rtc.timezone(0)
+    -- mobile.setAuto(check_sim_period, get_cell_period, search_cell_time, auto_reset_stack, network_check_period)
+    mobile.setAuto(10 * 1000, 5 * 60 * 1000, 5, true, 5 * 60 * 1000)
+    socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
+
+    log.info("ip", "wait")
+    local ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
+    if not ret then
+        log.error("ip", "timeout")
+        utils.reboot_with_delay_blocking()
+    end
+    log.info("ip", "ready")
+    led.setMode(led.WAIT_FOR_NETWORK)
+
+    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"})
+    local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
+    if not ret then
+        log.error("ntp", "failed")
+        utils.reboot_with_delay_blocking()
+    end
+    log.info("ntp", "ready")
+    led.setMode(led.NETWORK_CONNECTED)
+end
+
+local function fskv_setup()
+    fskv.init()
+    local used, total, kv_count = fskv.status()
+    log.info("fskv", "used", used, "total", total, "kv_count", kv_count)
+
+    -- print all data
+    local iter = fskv.iter()
+    if iter then
+        while 1 do
+            local k = fskv.next(iter)
+            if not k then
+                break
+            end
+            log.debug("fskv", "key", k)
+        end
+    end
+end
+
+local function mqtt_validate_credentials(credentials)
+    if type(credentials["username"]) ~= "string" 
+    or type(credentials["password"]) ~= "string" 
+    or type(credentials["cert"]) ~= "string" 
+    or type(credentials["key"]) ~= "string" 
+    or type(credentials["host"]) ~= "string"
+    or type(credentials["port"]) ~= "number"
+    or type(credentials["client_id"]) ~= "string" then
+        log.error("mqtt", "validate_credentials", "invalid credentials")
+        return false
+    end
+    return true
+end
+
+local function mqtt_request_credentials()
+    log.info("mqtt", "request_credentials")
+
+    local code, headers, body = http.request("POST", "https://issuer.nemopi.com/api/certificate", {}, json.encode({
+        imei = imei
+    })).wait()
+    log.error("mqtt", "request_credentials", "received", "code", code)
+    if code == 200 then
+        local parsed = json.decode(body)
+        local credentials = {
+            host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net",
+            port = 8883,
+            client_id = imei,
+            username = imei,
+            password = "",
+            cert = parsed["certificate"],
+            key = parsed["privateKey"]
+        }
+        if mqtt_validate_credentials(credentials) then
+            log.info("mqtt", "request_credentials", "success")
+            return credentials
+        end
+    end
+    log.error("mqtt", "request_credentials", "failed", "code", code, "body", body)
+    sys.wait(60 * 1000) -- wait for 60 seconds
+
+    return nil
+end
+
+
+local function mqtt_get_credentials()
+    local credentials = fskv.get("credentials")
+    if credentials and mqtt_validate_credentials(credentials) then
+        log.info("mqtt", "get_credentials", "from fskv")
+        return credentials
+    end
+    credentials = mqtt_request_credentials()
+    if credentials then
+        fskv.set("credentials", credentials)
+        return credentials
+    end
+    return nil
+end
+
+local function mqtt_setup()
+    local credentials = mqtt_get_credentials()
+    if not credentials then
+        log.error("mqtt", "failed to get mqtt credentials")
+        utils.reboot_with_delay_blocking(30 * 60 * 1000)
+    end
+    local mqttc = mqtt.create(nil, credentials["host"], credentials["port"], {
+        client_cert = credentials["cert"],
+        client_key = credentials["key"],
+        verify = 0
+    })
+    assert(mqttc, "failed to create mqtt client")
+
+    mqttc:auth(credentials["client_id"], credentials["username"], credentials["password"], true) -- client_id must have value, the last parameter true is for clean session
+    mqttc:keepalive(60) -- default value 240s
+    mqttc:autoreconn(true, 3000) -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures
+    mqttc:debug(false)
+
+    return mqttc
+end
+
 local function sendTelemetry(client, msg_type, body)
     local telemetry = body
     telemetry["msg_type"] = msg_type
@@ -46,57 +166,11 @@ sys.taskInit(function()
     assert(mqtt, "firmware missing mqtt support")
     assert(fskv, "firmware missing fskv support")
 
-    -- setup database
-    utils.fskv_setup()
-
-    -- setup sms callback
     sms_setup()
+    network_setup()
+    fskv_setup()
 
-    -- mobile.setAuto(check_sim_period, get_cell_period, search_cell_time, auto_reset_stack, network_check_period)
-    mobile.setAuto(10 * 1000, 5 * 60 * 1000, 5, true, 5 * 60 * 1000)
-    led.setMode(led.WAIT_FOR_NETWORK)
-
-    -- setup internet access
-    log.info("ip", "wait")
-    local ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
-    if not ret then
-        log.error("ip", "timeout")
-        utils.reboot_with_delay_blocking()
-    end
-    log.info("ip", "ready")
-
-    -- sync system time
-    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"})
-    local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
-    if not ret then
-        log.error("ntp", "failed")
-        utils.reboot_with_delay_blocking()
-    end
-    log.info("ntp", "ready")
-
-    led.setMode(led.NETWORK_CONNECTED)
-
-    -- get credentials
-    local ret, credentials = utils.fskv_get_credentials()
-    if not ret then
-        log.error("mqtt", "failed to get mqtt credentials")
-        utils.reboot_with_delay_blocking(30 * 60 * 1000)
-    end
-
-    -- setup mqtt
-    local mqttc = mqtt.create(nil, mqtt_host, mqtt_port, {
-        client_cert = credentials["cert"],
-        client_key = credentials["key"],
-        verify = 0
-    })
-    if not mqttc then
-        log.error("mqtt", "failed to create mqtt client")
-        utils.reboot_with_delay_blocking(30 * 60 * 1000)
-    end
-    mqttc:auth(imei, credentials["username"], credentials["password"], true) -- client_id must have value, the last parameter true is for clean session
-    mqttc:keepalive(60) -- default value 240s
-    mqttc:autoreconn(true, 3000) -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures
-    mqttc:debug(false)
+    local mqttc = mqtt_setup()
 
     mqttc:on(function(mqtt_client, event, topic, payload)
         if event == "conack" then
@@ -112,24 +186,7 @@ sys.taskInit(function()
         elseif event == "recv" then
             if topic:endsWith("/cmd") then
                 local telemetry = json.decode(payload)
-                if telemetry["msg_type"] == "credentials" then
-                    local ret = utils.fskv_set_credentials(telemetry["credentials"])
-                    if ret then
-                        log.warn("c2d", "cmd", "credentials", "updated")
-                        payload = {
-                            cmd = "credentials",
-                            status = "ok"
-                        }
-                        sendTelemetry(mqttc, "cmd", payload)
-                    else
-                        log.error("c2d", "cmd", "credentials", "failed to set credentials")
-                        payload = {
-                            cmd = "credentials",
-                            status = "failed"
-                        }
-                        sendTelemetry(mqttc, "cmd", payload)
-                    end
-                elseif telemetry["msg_type"] == "config" then
+                if telemetry["msg_type"] == "config" then
                     local ret = utils.fskv_set_config(telemetry["config"])
                     if ret then
                         log.warn("c2d", "cmd", "config", "updated")

@@ -2,70 +2,6 @@ local utils = {}
 
 local libfota = require("libfota")
 
-function utils.fskv_setup()
-    fskv.init()
-    local used, total, kv_count = fskv.status()
-    log.info("fskv", "used", used, "total", total, "kv_count", kv_count)
-
-    -- print all data
-    local iter = fskv.iter()
-    if iter then
-        while 1 do
-            local k = fskv.next(iter)
-            if not k then
-                break
-            end
-            log.debug("fskv", "key", k)
-        end
-    end
-end
-
-function utils.fskv_set_credentials(credentials)
-    if type(credentials) ~= "table" then
-        return false
-    end
-
-    local temp = {}
-
-    local username = credentials["username"]
-    if type(username) ~= "string" then
-        return false
-    end
-    temp["username"] = username
-
-    local password = credentials["password"]
-    if type(password) ~= "string" then
-        return false
-    end
-    temp["password"] = password
-
-    local cert = credentials["cert"]
-    if type(cert) ~= "string" then
-        return false
-    end
-    temp["cert"] = cert
-
-    local key = credentials["key"]
-    if type(key) ~= "string" then
-        return false
-    end
-    if not key:startsWith("-----BEGIN RSA PRIVATE KEY-----") then
-        return false
-    end
-    temp["key"] = key
-
-    assert(fskv.set("credentials", temp), "failed to set credentials")
-    return true
-end
-
-function utils.fskv_get_credentials()
-    local credentials = fskv.get("credentials")
-    if credentials == nil then
-        return false
-    end
-    return true, credentials
-end
-
 function utils.fskv_set_config(config)
     if type(config) ~= "table" then
         return false
@@ -89,35 +25,6 @@ function utils.fskv_get_config()
         return false
     end
     return true, config
-end
-
--- download credentials from url and save into fskv
--- no return value
-function utils.download_credentials(url)
-    if type(url) ~= "string" then
-        log.error("download_credentials", "invalid url")
-        return
-    end
-    if not url:startsWith("http://") and not url:startsWith("https://") then
-        log.error("download_credentials", "url has to start with http:// or https://")
-        return
-    end
-    -- http client works in task
-    sys.taskInit(function()
-        sys.wait(1000)
-        local code, _, body = http.request("GET", url).wait()
-        if code ~= 200 then
-            log.error("download_credentials", "download failed", "code", code)
-            return
-        end
-
-        local creds = json.decode(body)
-        local ret = utils.fskv_set_credentials(creds)
-        if not ret then
-            log.error("download_credentials", "failed to parse and save credentials")
-        end
-        log.info("download_credentials", "success")
-    end)
 end
 
 function utils.reboot_with_delay_blocking(wait_ms)

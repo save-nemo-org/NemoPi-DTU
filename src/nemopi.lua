@@ -25,8 +25,6 @@ local function sms_setup()
         elseif cmd == "REBOOT" then
             sms.send(num, "OK", false)
             utils.reboot_with_delay_nonblocking(60 * 1000)
-        elseif cmd == "CREDENTIALS" then
-            utils.download_credentials(args[1])
         elseif cmd == "OTA" then
             utils.ota(args[1])
         end
@@ -118,7 +116,6 @@ local function mqtt_request_credentials()
 
     return nil
 end
-
 
 local function mqtt_get_credentials()
     local credentials = fskv.get("credentials")

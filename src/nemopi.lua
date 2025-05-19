@@ -1,5 +1,6 @@
 local nemopi = {}
 
+local communication = require("communication")
 local utils = require("utils")
 local modbus = require("modbus")
 local power = require("power")
@@ -7,8 +8,6 @@ local sensors = require("sensors")
 local led = require("led")
 
 local imei = mobile.imei()
-local pub_topic = "buoys/" .. imei .. "/d2c"
-local sub_topic = "buoys/" .. imei .. "/c2d"
 
 local function sms_setup()
     sms.setNewSmsCb(function(num, txt, metas)
@@ -31,31 +30,6 @@ local function sms_setup()
     end)
 end
 
-local function network_setup()
-    rtc.timezone(0)
-    -- mobile.setAuto(check_sim_period, get_cell_period, search_cell_time, auto_reset_stack, network_check_period)
-    mobile.setAuto(10 * 1000, 5 * 60 * 1000, 5, true, 5 * 60 * 1000)
-    socket.setDNS(socket.LWIP_GP, 1, "8.8.8.8")
-
-    log.info("ip", "wait")
-    local ret = sys.waitUntil("IP_READY", 3 * 60 * 1000) -- 3 mins
-    if not ret then
-        log.error("ip", "timeout")
-        utils.reboot_with_delay_blocking()
-    end
-    log.info("ip", "ready")
-    led.setMode(led.WAIT_FOR_NETWORK)
-
-    socket.sntp({"0.pool.ntp.org", "1.pool.ntp.org", "time.windows.com"})
-    local ret = sys.waitUntil("NTP_UPDATE", 180 * 1000) -- 3 mins
-    if not ret then
-        log.error("ntp", "failed")
-        utils.reboot_with_delay_blocking()
-    end
-    log.info("ntp", "ready")
-    led.setMode(led.NETWORK_CONNECTED)
-end
-
 local function fskv_setup()
     fskv.init()
     local used, total, kv_count = fskv.status()
@@ -74,88 +48,65 @@ local function fskv_setup()
     end
 end
 
-local function mqtt_validate_credentials(credentials)
-    if type(credentials["username"]) ~= "string" 
-    or type(credentials["password"]) ~= "string" 
-    or type(credentials["cert"]) ~= "string" 
-    or type(credentials["key"]) ~= "string" 
-    or type(credentials["host"]) ~= "string"
-    or type(credentials["port"]) ~= "number"
-    or type(credentials["client_id"]) ~= "string" then
-        log.error("mqtt", "validate_credentials", "invalid credentials")
-        return false
-    end
-    return true
-end
-
-local function mqtt_request_credentials()
-    log.info("mqtt", "request_credentials")
-
-    local code, headers, body = http.request("POST", "https://issuer.nemopi.com/api/certificate", {}, json.encode({
-        imei = imei
-    })).wait()
-    log.error("mqtt", "request_credentials", "received", "code", code)
-    if code == 200 then
-        local parsed = json.decode(body)
-        local credentials = {
-            host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net",
-            port = 8883,
-            client_id = imei,
-            username = imei,
-            password = "",
-            cert = parsed["certificate"],
-            key = parsed["privateKey"]
-        }
-        if mqtt_validate_credentials(credentials) then
-            log.info("mqtt", "request_credentials", "success")
-            return credentials
-        end
-    end
-    log.error("mqtt", "request_credentials", "failed", "code", code, "body", body)
-    sys.wait(60 * 1000) -- wait for 60 seconds
-
-    return nil
-end
-
-local function mqtt_get_credentials()
-    local credentials = fskv.get("credentials")
-    if credentials and mqtt_validate_credentials(credentials) then
-        log.info("mqtt", "get_credentials", "from fskv")
-        return credentials
-    end
-    credentials = mqtt_request_credentials()
-    if credentials then
-        fskv.set("credentials", credentials)
-        return credentials
-    end
-    return nil
-end
-
-local function mqtt_setup()
-    local credentials = mqtt_get_credentials()
-    if not credentials then
-        log.error("mqtt", "failed to get mqtt credentials")
-        utils.reboot_with_delay_blocking(30 * 60 * 1000)
-    end
-    local mqttc = mqtt.create(nil, credentials["host"], credentials["port"], {
-        client_cert = credentials["cert"],
-        client_key = credentials["key"],
-        verify = 0
-    })
-    assert(mqttc, "failed to create mqtt client")
-
-    mqttc:auth(credentials["client_id"], credentials["username"], credentials["password"], true) -- client_id must have value, the last parameter true is for clean session
-    mqttc:keepalive(60) -- default value 240s
-    mqttc:autoreconn(true, 3000) -- auto reconnect -- may need to move to custom implementation later, like restart hw after a couple of failures
-    mqttc:debug(false)
-
-    return mqttc
-end
-
-local function sendTelemetry(client, msg_type, body)
+local function seralise_payload(msg_type, body)
     local telemetry = body
     telemetry["msg_type"] = msg_type
-    client:publish(pub_topic .. "/telemetry", json.encode(telemetry), 0)
+    return json.encode(telemetry)
+end
+
+local function seralise_response_payload(cmd, operation_id, status, reason)
+    if type(operation_id) ~= "string" and type(operation_id) ~= "number" then
+        operation_id = nil
+    end
+    local payload = {
+        msg_type = "response",
+        cmd = cmd,
+        operation_id = operation_id,
+        status = status,
+        reason = reason
+    }
+    return json.encode(payload)
+end
+
+local function process_command(sub_topic, payload, response_topic)
+
+    local telemetry, result, err = json.decode(payload)
+    
+    if telemetry == nil or result ~= 1 then
+        log.error("process_command", "json decode", "failed", err)
+        communication.publish(response_topic, seralise_response_payload(nil, nil, "failed", "json decode failed"))
+        return
+    end
+    
+    if telemetry["msg_type"] ~= "cmd" or type(telemetry["cmd"]) ~= "string" then
+        log.error("process_command", "msg_type", telemetry["msg_type"], "cmd", telemetry["cmd"], "unknown")
+        communication.publish(response_topic, seralise_response_payload(nil, nil, "failed", "msg_type or cmd unknown"))
+        return
+    end
+
+    log.info("process_command", "msg_type", telemetry["msg_type"], "cmd", telemetry["cmd"], "operation_id", telemetry["operation_id"])
+    
+    if telemetry["cmd"] == "ota" then
+        log.info("process_command", "run ota")
+        utils.ota(telemetry["url"])
+        communication.publish(response_topic, seralise_response_payload("ota", telemetry["operation_id"], "ok", nil))
+    elseif telemetry["cmd"] == "reboot" then
+        log.info("process_command", "reboot")
+        communication.publish(response_topic, seralise_response_payload("reboot", telemetry["operation_id"], "ok", nil))
+        utils.reboot_with_delay_nonblocking(60 * 1000)
+    elseif telemetry["cmd"] == "ping" then
+        log.info("process_command", "ping")
+        communication.publish(response_topic, seralise_response_payload("ping", telemetry["operation_id"], "ok", nil))
+    else 
+        log.info("process_command", "cmd", telemetry["cmd"], "unknown")
+        payload = {
+            cmd = telemetry["cmd"],
+            operation_id = telemetry["operation_id"],
+            reason = "cmd unknown",
+            status = "failed"
+        }
+        communication.publish(response_topic, seralise_response_payload(telemetry["cmd"], telemetry["operation_id"], "failed", "cmd unknown"))
+    end
 end
 
 sys.taskInit(function()
@@ -164,88 +115,63 @@ sys.taskInit(function()
     assert(fskv, "firmware missing fskv support")
 
     sms_setup()
-    network_setup()
     fskv_setup()
 
-    local mqttc = mqtt_setup()
+    led.setMode(led.WAIT_FOR_NETWORK)
+    
+    -- communication module setup
+    --[[
+        cloud to device topics: 
+        - buoys/<imei>/c2d/cmd
 
-    mqttc:on(function(mqtt_client, event, topic, payload)
-        if event == "conack" then
-            mqttc:subscribe(sub_topic .. "/#")
-            local payload = {
-                imei = imei,
-                firmware = rtos.firmware(),
-                version = VERSION,
-                ticks = mcu.ticks(),
-                power_on_reason = {pm.lastReson()},
-            }
-            sendTelemetry(mqttc, "connect", payload)
-        elseif event == "recv" then
-            if topic:endsWith("/cmd") then
-                local telemetry = json.decode(payload)
-                if telemetry["msg_type"] == "config" then
-                    local ret = utils.fskv_set_config(telemetry["config"])
-                    if ret then
-                        log.warn("c2d", "cmd", "config", "updated")
-                        payload = {
-                            cmd = "config",
-                            status = "ok"
-                        }
-                        sendTelemetry(mqttc, "cmd", payload)
-                    else
-                        log.error("c2d", "cmd", "config", "failed to set config")
-                        payload = {
-                            cmd = "config",
-                            status = "failed"
-                        }
-                        sendTelemetry(mqttc, "cmd", payload)
-                    end
-                elseif telemetry["msg_type"] == "ota" then
-                    utils.ota(telemetry["url"])
-                    payload = {
-                        cmd = "ota",
-                        status = "ok"
-                    }
-                    sendTelemetry(mqttc, "cmd", payload)
-                    log.warn("c2d", "cmd", "ota", "okay")
-                elseif telemetry["msg_type"] == "reboot" then
-                    log.warn("c2d", "cmd", "reboot", "okay")
-                    payload = {
-                        cmd = "reboot",
-                        status = "ok"
-                    }
-                    sendTelemetry(mqttc, "cmd", payload)
-                    utils.reboot_with_delay_nonblocking(60 * 1000)
-                elseif telemetry["msg_type"] == "ping" then
-                    log.warn("c2d", "cmd", "ping", "okay")
-                    local payload = {
-                        cmd = "ping",
-                        status = "ok"
-                    }
-                    sendTelemetry(mqttc, "cmd", payload)
-                end
-            end
-        elseif event == "sent" then
-            sys.publish("mqtt_sent")
-        elseif event == "disconnect" then
-            -- mqtt_client:connect()    -- required when autoreconn is false
-        end
-    end)
+        device to cloud topics:
+        - buoys/<imei>/d2c/telemetry
+        - buoys/<imei>/d2c/response
+    ]]
+    local device_id = imei
+    local sub_topics = {
+        "buoys/" .. device_id .. "/c2d/#",
+    }
+    local telemetry_pub_topic = "buoys/" .. imei .. "/d2c/telemetry"
+    local response_pub_topic = "buoys/" .. imei .. "/d2c/response"
+    if not communication.init(device_id, sub_topics) then
+        log.error("communication", "init", "failed")
+        utils.reboot_with_delay_blocking(30 * 60 * 1000)
+    end
 
-    -- connect mqtt
-    log.info("mqtt", "connect", "wait")
-    mqttc:connect()
-    sys.waitUntil("mqtt_sent")
-    log.info("mqtt", "connect", "ready")
+    -- led.setMode(led.NETWORK_CONNECTED)
     led.setMode(led.MQTT_CONNECTED)
 
+    -- send connect telemetry
+    local payload = {
+        imei = imei,
+        firmware = rtos.firmware(),
+        version = VERSION,
+        ticks = mcu.ticks(),
+        power_on_reason = {pm.lastReson()},
+    }
+    communication.publish(telemetry_pub_topic, seralise_payload("connect", payload))
+
+    -- request configuration 
+    -- TODO: request and wait for configuration 
+
+    -- fallback to old configuration method 
     -- load system configuration
     local ret, config = utils.fskv_get_config()
     if not ret then
         log.error("config", "failed to read system config")
-        utils.reboot_with_delay_blocking(30 * 60 * 1000)
+        log.warn("config", "fallback to default config")
+        config = {
+            read_interval_ms = 30 * 60 * 1000,
+        }
+        assert(utils.fskv_set_config(config), "failed to set config")
     end
-    assert(config, "invalid config")
+
+    -- listen to commands 
+    sys.subscribe("MQTT_RECV", function(topic, payload)
+        sys.taskInit(process_command, topic, payload, response_pub_topic)
+    end)
+
 
     -- start sensoring task
     local UART_ID = 1
@@ -278,7 +204,7 @@ sys.taskInit(function()
             end
         end
 
-        sendTelemetry(mqttc, "detect", payload)
+        communication.publish(telemetry_pub_topic, seralise_payload("detect", payload))
     end
 
     sys.wait(2000)
@@ -303,7 +229,7 @@ sys.taskInit(function()
                 lat_lon = lat_lon,
                 cell = cell
             }
-            sendTelemetry(mqttc, "diagnosis", payload)
+            communication.publish(telemetry_pub_topic, seralise_payload("diagnosis", payload))
         end
 
         do
@@ -322,7 +248,7 @@ sys.taskInit(function()
                 }
                 table.insert(payload.sensors, sensor_telemetry)
             end
-            sendTelemetry(mqttc, "data", payload)
+            communication.publish(telemetry_pub_topic, seralise_payload("data", payload))
         end
 
         sys.wait(2 * 1000)

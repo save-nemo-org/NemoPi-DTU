@@ -43,9 +43,9 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
 | publish to   | buoys/\<IMEI>/d2c/# |
 | subscribe to | buoys/\<IMEI>/c2d/# |
 
-#### D2C Telemetry
+### D2C MQTT Telemetry
 
-##### Logon package on mqtt connect
+#### Logon package on mqtt connect
 
 - endpoint: `buoys/\<IMEI>/d2c/telemetry`
 - msg_type: connection
@@ -61,7 +61,7 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   }
   ```
 
-##### Sensor detection (once every boot up)
+#### Sensor detection (once every boot up)
 
 - endpoint: `buoys/\<IMEI>/d2c/telemetry`
 - msg_type: detect
@@ -80,7 +80,7 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   }
   ```
 
-##### Sensor reading
+#### Sensor reading
 
 - endpoint: `buoys/\<IMEI>/d2c/telemetry`
 - msg_type: data
@@ -110,7 +110,7 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   }
   ```
 
-##### Diagnosis info
+#### Diagnosis info
 
 - endpoint: `buoys/\<IMEI>/d2c/telemetry`
 - msg_type: diagnosis
@@ -127,117 +127,70 @@ PING command is designed to return OK over SMS for functionality checking. Pleas
   }
   ```
 
-#### C2D Telemetry
+### C2D MQTT Commands
 
-##### Credentials
+#### Cloud to device command:
 
-- endpoint: `buoys/\<IMEI>/c2d/cmd`
-- msg_type: credentials
+- endpoint: `buoys/<IMEI>/c2d/cmd`
+- msg_type: "cmd"
 - schema:
+
   ```json
   {
-    "msg_type": "credentials",
-    "credentials": {
-      "username": str,
-      "password": str,
-      "cert": str,
-      "key": str,
-    }
-  }
-  ```
-- response: 
-  ```json
-  {
-    "cmd": "credentials",
-    "status": "ok" or "failed"
+    "msg_type": "cmd",
+    "cmd": "<string>",
+    "operation_id": "<string>", # when available
+    "some_attribute": "some_attribute_value", # when available
   }
   ```
 
-##### Config
+#### Device to cloud response:
 
-- endpoint: `buoys/\<IMEI>/c2d/cmd`
-- msg_type: config
+- endpoint: `buoys/<IMEI>/d2c/response`
+- msg_type: "response"
 - schema:
-  ```json
-  {
-    "msg_type": "config",
-    "config": 
+  - On success:
+    ```json
     {
-      "read_interval_ms": float
+      "msg_type": "response",
+      "cmd": "<string>",
+      "operation_id": "<string>", # when available
+      "status": "ok"
     }
-  }
-  ```
-- response:
-  ```json
-  {
-    "cmd": "config",
-    "status": "ok" or "failed"
-  }
-  ```
+    ```
+  - On failure:
+    ```json
+    {
+      "msg_type": "response",
+      "cmd": "<string>",          # when available
+      "operation_id": "<string>", # when available
+      "reason": "<string>",
+      "status": "failed"
+    }
+    ```
 
-##### Ota
+#### Supported commands:
 
-- endpoint: `buoys/\<IMEI>/c2d/cmd`
-- msg_type: config
-- schema:
-  ```json
-  {
-      "msg_type": "ota",
-      # This needs to be the .bin file produced by luatools
-      "url": "http:/xxxxx/xxx.bin"
-  }
-  ```
-- response:
-  ```json
-  {
-    "cmd": "ota",
-    "status": "ok"
-  }
-  ```
+| cmd    | attributes      | Expected behaviour                                                                                       |
+| ------ | --------------- | -------------------------------------------------------------------------------------------------------- |
+| ping   |                 |                                                                                                          |
+| ota    | `url: <string>` | Device will download firmware from the given url. Cloud end need to issue reboot after a successful OTA. |
+| reboot |                 | Device will reboot in 60 seconds                                                                         |
 
-##### Reboot
+#### Legacy commands:
 
-- endpoint: `buoys/\<IMEI>/c2d/cmd`
-- msg_type: config
-- schema:
-  ```json
-  {
-    "msg_type": "reboot"
-  }
-  ```
-- response: 
-  ```json
-  {
-    "cmd": "reboot",
-    "status": "ok"
-  }
-  ```
-  Device will reboot in 60 seconds 
+> Legacy shall NOT be used in new applications. Support of certain command will be removed over the future releases.
 
-##### PING
+| cmd    | attributes                              | Expected behaviour                                                                                                        |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| config | `"config": {"read_interval_ms": float}` | Device will update `read_interval_ms` in non-volatile storage. Cloud end need to issue reboot after configuration update. |
 
-- endpoint: `buoys/\<IMEI>/c2d/cmd`
-- msg_type: config
-- schema:
-  ```json
-  {
-    "msg_type": "ping"
-  }
-  ```
-- response:
-  ```json
-  {
-    "cmd": "ping",
-    "status": "ok"
-  }
-  ```
+## Simulatior
 
-## Simulatior 
+A PC based simulator is available at https://github.com/openLuat/luatos-soc-pc, LuatOS main repo (https://github.com/openLuat/luatos) need to be placed in same folder of luatos-soc-pc.
 
-A PC based simulator is available at https://github.com/openLuat/luatos-soc-pc, LuatOS main repo (https://github.com/openLuat/luatos) need to be placed in same folder of luatos-soc-pc. 
-
-Pre-compiled simulator binary: 
+Pre-compiled simulator binary:
 
 ```powershell
-.\tools\bin\luatos-lua.exe .\src\ .\tools\libs_pc\
+.\tools\bin\luatos-pc.exe .\platforms\PC\ .\src\
 ```

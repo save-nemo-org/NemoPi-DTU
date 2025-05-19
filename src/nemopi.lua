@@ -224,10 +224,23 @@ sys.taskInit(function()
             local lat_lon = sensors.infrastructure.Gps:read()
             local cell = utils.cell_info()
 
+            local total, used, max = rtos.meminfo("lua")
+            local sys_total, sys_used, sys_max = rtos.meminfo("sys")
+
             local payload = {
                 vbat = vbat,
                 lat_lon = lat_lon,
-                cell = cell
+                cell = cell,
+                lua_mem = {
+                    total = total,
+                    used = used,
+                    max = max
+                },
+                sys_mem = {
+                    total = sys_total,
+                    used = sys_used,
+                    max = sys_max
+                },
             }
             communication.publish(telemetry_pub_topic, seralise_payload("diagnosis", payload))
         end

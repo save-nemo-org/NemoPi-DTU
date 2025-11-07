@@ -75,8 +75,8 @@ local function mqtt_request_certificate(device_id)
 
     log.debug("communication", "mqtt", "request_certificate")
 
-    -- New certificate issuer endpoint
-    local code, headers, body = http.request("POST", "https://provision.nemopi.com/api/v1/certificate", {}, json.encode({
+    -- Certificate issuer endpoint - rate limited to 1 request per minute per IMEI
+    local code, headers, body = http.request("POST", "https://provisioning.nemopi.com/api/certificate", {}, json.encode({
         imei = device_id
     })).wait()
     log.debug("communication", "mqtt", "request_certificate", "received", "code", code)
@@ -91,9 +91,59 @@ local function mqtt_request_certificate(device_id)
             log.debug("communication", "mqtt", "request_certificate", "success")
             return certificate
         end
+    elseif code == 429 then
+        log.error("communication", "mqtt", "request_certificate", "rate_limited")
     end
     log.error("communication", "mqtt", "request_certificate", "failed", "code", code, "body", body)
 
+    return nil
+end
+
+-- Check onboarding status (poll until terminal state)
+local function mqtt_poll_onboarding_status(operation_id, max_retries, retry_delay_ms)
+    max_retries = max_retries or 12  -- default 12 retries (1 minute with 5s delay)
+    retry_delay_ms = retry_delay_ms or 5000  -- default 5 second delay
+    
+    for attempt = 1, max_retries do
+        log.debug("communication", "mqtt", "poll_onboarding_status", "attempt", attempt)
+        
+        local code, headers, body = http.request("GET", "https://provisioning.nemopi.com/api/onboard/" .. operation_id, {}, "").wait()
+        log.debug("communication", "mqtt", "poll_onboarding_status", "received", "code", code)
+        
+        if code == 200 then
+            local parsed = json.decode(body)
+            local status = parsed["status"]
+            
+            if status == "succeeded" then
+                log.debug("communication", "mqtt", "poll_onboarding_status", "succeeded")
+                -- Return broker configuration
+                if type(parsed["broker"]) == "table" and 
+                   type(parsed["broker"]["host"]) == "string" and parsed["broker"]["host"] ~= "" and 
+                   type(parsed["broker"]["port"]) == "number" then
+                    return {
+                        host = parsed["broker"]["host"],
+                        port = parsed["broker"]["port"]
+                    }
+                end
+            elseif status == "failed" or status == "canceled" then
+                log.error("communication", "mqtt", "poll_onboarding_status", "terminal_failure", "status", status)
+                return nil
+            elseif status == "pending" then
+                log.debug("communication", "mqtt", "poll_onboarding_status", "pending", "retry_in_ms", retry_delay_ms)
+                sys.wait(retry_delay_ms)
+                -- continue to next attempt
+            else
+                log.error("communication", "mqtt", "poll_onboarding_status", "unknown_status", "status", status)
+                return nil
+            end
+        else
+            log.error("communication", "mqtt", "poll_onboarding_status", "request_failed", "code", code, "body", body)
+            sys.wait(retry_delay_ms)
+            -- continue to next attempt
+        end
+    end
+    
+    log.error("communication", "mqtt", "poll_onboarding_status", "max_retries_reached")
     return nil
 end
 
@@ -104,21 +154,36 @@ local function mqtt_request_broker_endpoint(device_id, certificate)
 
     log.debug("communication", "mqtt", "request_broker_endpoint")
 
-    -- New broker discovery endpoint
-    local code, headers, body = http.request("POST", "https://provision.nemopi.com/api/v1/broker", {}, json.encode({
+    -- Onboard endpoint - initiates device onboarding
+    local code, headers, body = http.request("POST", "https://provisioning.nemopi.com/api/onboard", {}, json.encode({
         imei = device_id
     })).wait()
     log.debug("communication", "mqtt", "request_broker_endpoint", "received", "code", code)
     
     if code == 200 then
         local parsed = json.decode(body)
-        if type(parsed["host"]) == "string" and parsed["host"] ~= "" and 
-           type(parsed["port"]) == "number" then
-            log.debug("communication", "mqtt", "request_broker_endpoint", "success")
-            return {
-                host = parsed["host"],
-                port = parsed["port"]
-            }
+        local status = parsed["status"]
+        local operation_id = parsed["operationId"]
+        
+        if status == "succeeded" then
+            -- Onboarding completed immediately, extract broker info
+            log.debug("communication", "mqtt", "request_broker_endpoint", "immediate_success")
+            if type(parsed["broker"]) == "table" and 
+               type(parsed["broker"]["host"]) == "string" and parsed["broker"]["host"] ~= "" and 
+               type(parsed["broker"]["port"]) == "number" then
+                return {
+                    host = parsed["broker"]["host"],
+                    port = parsed["broker"]["port"]
+                }
+            end
+        elseif status == "pending" and type(operation_id) == "string" and operation_id ~= "" then
+            -- Onboarding is pending, need to poll for status
+            log.debug("communication", "mqtt", "request_broker_endpoint", "pending", "operation_id", operation_id)
+            return mqtt_poll_onboarding_status(operation_id)
+        elseif status == "failed" or status == "canceled" then
+            log.error("communication", "mqtt", "request_broker_endpoint", "terminal_failure", "status", status)
+        else
+            log.error("communication", "mqtt", "request_broker_endpoint", "invalid_response", "status", status)
         end
     end
     log.error("communication", "mqtt", "request_broker_endpoint", "failed", "code", code, "body", body)

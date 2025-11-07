@@ -55,6 +55,25 @@ local function mqtt_validate_broker(broker)
     return true
 end
 
+-- Extract first MQTT endpoint from array response
+local function mqtt_extract_endpoint(mqtt_endpoints)
+    if type(mqtt_endpoints) ~= "table" or #mqtt_endpoints == 0 then
+        log.error("communication", "mqtt", "extract_endpoint", "no endpoints in array")
+        return nil
+    end
+    
+    local endpoint = mqtt_endpoints[1]
+    if mqtt_validate_broker(endpoint) then
+        return {
+            host = endpoint["host"],
+            port = endpoint["port"]
+        }
+    end
+    
+    log.error("communication", "mqtt", "extract_endpoint", "invalid endpoint structure")
+    return nil
+end
+
 -- Validate certificate data (cert and key only)
 local function mqtt_validate_certificate(certificate)
     if type(certificate) ~= "table" then
@@ -135,13 +154,8 @@ local function mqtt_poll_onboarding_status(operation_id, max_retries, retry_dela
             
             if status == "succeeded" then
                 log.debug("communication", "mqtt", "poll_onboarding_status", "succeeded")
-                -- Return broker configuration
-                if mqtt_validate_broker(parsed["broker"]) then
-                    return {
-                        host = parsed["broker"]["host"],
-                        port = parsed["broker"]["port"]
-                    }
-                end
+                -- Return broker configuration from mqttEndpoints array
+                return mqtt_extract_endpoint(parsed["mqttEndpoints"])
             elseif status == "failed" or status == "canceled" then
                 log.error("communication", "mqtt", "poll_onboarding_status", "terminal_failure", "status", status)
                 return nil
@@ -188,14 +202,9 @@ local function mqtt_request_broker_endpoint(device_id, certificate)
         local operation_id = parsed["operationId"]
         
         if status == "succeeded" then
-            -- Onboarding completed immediately, extract broker info
+            -- Onboarding completed immediately, extract broker info from mqttEndpoints array
             log.debug("communication", "mqtt", "request_broker_endpoint", "immediate_success")
-            if mqtt_validate_broker(parsed["broker"]) then
-                return {
-                    host = parsed["broker"]["host"],
-                    port = parsed["broker"]["port"]
-                }
-            end
+            return mqtt_extract_endpoint(parsed["mqttEndpoints"])
         elseif status == "pending" and type(operation_id) == "string" and operation_id ~= "" then
             -- Onboarding is pending, need to poll for status
             log.debug("communication", "mqtt", "request_broker_endpoint", "pending", "operation_id", operation_id)

@@ -8,6 +8,10 @@ local communication = {}
 
 communication.mqtt_client = nil
 
+-- Onboarding retry configuration
+local ONBOARDING_MAX_RETRIES = 12  -- default 12 retries
+local ONBOARDING_RETRY_DELAY_MS = 5000  -- default 5 second delay between retries
+
 local function network_setup()
     rtc.timezone(0)
     -- mobile.setAuto(check_sim_period, get_cell_period, search_cell_time, auto_reset_stack, network_check_period)
@@ -34,6 +38,20 @@ local function network_setup()
     -- TODO: add network check
     -- TODO: handle network disconnection
 
+    return true
+end
+
+-- Validate broker configuration
+local function mqtt_validate_broker(broker)
+    if type(broker) ~= "table" then
+        return false
+    end
+    if type(broker["host"]) ~= "string" or broker["host"] == "" then
+        return false
+    end
+    if type(broker["port"]) ~= "number" then
+        return false
+    end
     return true
 end
 
@@ -93,6 +111,7 @@ local function mqtt_request_certificate(device_id)
         end
     elseif code == 429 then
         log.error("communication", "mqtt", "request_certificate", "rate_limited")
+        return nil
     end
     log.error("communication", "mqtt", "request_certificate", "failed", "code", code, "body", body)
 
@@ -101,8 +120,8 @@ end
 
 -- Check onboarding status (poll until terminal state)
 local function mqtt_poll_onboarding_status(operation_id, max_retries, retry_delay_ms)
-    max_retries = max_retries or 12  -- default 12 retries (1 minute with 5s delay)
-    retry_delay_ms = retry_delay_ms or 5000  -- default 5 second delay
+    max_retries = max_retries or ONBOARDING_MAX_RETRIES
+    retry_delay_ms = retry_delay_ms or ONBOARDING_RETRY_DELAY_MS
     
     for attempt = 1, max_retries do
         log.debug("communication", "mqtt", "poll_onboarding_status", "attempt", attempt)
@@ -117,9 +136,7 @@ local function mqtt_poll_onboarding_status(operation_id, max_retries, retry_dela
             if status == "succeeded" then
                 log.debug("communication", "mqtt", "poll_onboarding_status", "succeeded")
                 -- Return broker configuration
-                if type(parsed["broker"]) == "table" and 
-                   type(parsed["broker"]["host"]) == "string" and parsed["broker"]["host"] ~= "" and 
-                   type(parsed["broker"]["port"]) == "number" then
+                if mqtt_validate_broker(parsed["broker"]) then
                     return {
                         host = parsed["broker"]["host"],
                         port = parsed["broker"]["port"]
@@ -136,7 +153,12 @@ local function mqtt_poll_onboarding_status(operation_id, max_retries, retry_dela
                 log.error("communication", "mqtt", "poll_onboarding_status", "unknown_status", "status", status)
                 return nil
             end
+        elseif code == 404 or code == 401 or code == 403 then
+            -- Terminal HTTP errors - don't retry
+            log.error("communication", "mqtt", "poll_onboarding_status", "terminal_http_error", "code", code)
+            return nil
         else
+            -- Retryable errors (5xx, network issues, etc.)
             log.error("communication", "mqtt", "poll_onboarding_status", "request_failed", "code", code, "body", body)
             sys.wait(retry_delay_ms)
             -- continue to next attempt
@@ -168,9 +190,7 @@ local function mqtt_request_broker_endpoint(device_id, certificate)
         if status == "succeeded" then
             -- Onboarding completed immediately, extract broker info
             log.debug("communication", "mqtt", "request_broker_endpoint", "immediate_success")
-            if type(parsed["broker"]) == "table" and 
-               type(parsed["broker"]["host"]) == "string" and parsed["broker"]["host"] ~= "" and 
-               type(parsed["broker"]["port"]) == "number" then
+            if mqtt_validate_broker(parsed["broker"]) then
                 return {
                     host = parsed["broker"]["host"],
                     port = parsed["broker"]["port"]

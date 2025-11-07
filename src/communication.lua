@@ -37,7 +37,29 @@ local function network_setup()
     return true
 end
 
+-- Validate certificate data (cert and key only)
+local function mqtt_validate_certificate(certificate)
+    if type(certificate) ~= "table" then
+        log.error("communication", "mqtt", "validate_certificate", "certificate must be a table")
+        return false
+    end
+    if type(certificate["cert"]) ~= "string" or certificate["cert"] == "" then
+        log.error("communication", "mqtt", "validate_certificate", "invalid cert")
+        return false
+    end
+    if type(certificate["key"]) ~= "string" or certificate["key"] == "" then
+        log.error("communication", "mqtt", "validate_certificate", "invalid key")
+        return false
+    end
+    return true
+end
+
+-- Validate complete MQTT credentials (includes broker info)
 local function mqtt_validate_credentials(credentials)
+    if type(credentials) ~= "table" then
+        log.error("communication", "mqtt", "validate_credentials", "credentials must be a table")
+        return false
+    end
     if type(credentials["username"]) ~= "string" or type(credentials["password"]) ~= "string" or
         type(credentials["cert"]) ~= "string" or type(credentials["key"]) ~= "string" or type(credentials["host"]) ~=
         "string" or type(credentials["port"]) ~= "number" or type(credentials["client_id"]) ~= "string" then
@@ -47,49 +69,115 @@ local function mqtt_validate_credentials(credentials)
     return true
 end
 
-local function mqtt_request_credentials(device_id)
+-- Request certificate from the new provisioning API (done once per device)
+local function mqtt_request_certificate(device_id)
     assert(device_id ~= nil and type(device_id) == "string" and device_id ~= "", "device_id must be a string")
 
-    log.debug("communication", "mqtt", "request_credentials")
+    log.debug("communication", "mqtt", "request_certificate")
 
-    local code, headers, body = http.request("POST", "https://issuer.nemopi.com/api/certificate", {}, json.encode({
+    -- New certificate issuer endpoint
+    local code, headers, body = http.request("POST", "https://provision.nemopi.com/api/v1/certificate", {}, json.encode({
         imei = device_id
     })).wait()
-    log.debug("communication", "mqtt", "request_credentials", "received", "code", code)
+    log.debug("communication", "mqtt", "request_certificate", "received", "code", code)
+    
     if code == 200 then
         local parsed = json.decode(body)
-        local credentials = {
-            host = "nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net",
-            port = 8883,
-            client_id = device_id,
-            username = device_id,
-            password = "",
+        local certificate = {
             cert = parsed["certificate"],
             key = parsed["privateKey"]
         }
-        if mqtt_validate_credentials(credentials) then
-            log.debug("communication", "mqtt", "request_credentials", "success")
-            return credentials
+        if mqtt_validate_certificate(certificate) then
+            log.debug("communication", "mqtt", "request_certificate", "success")
+            return certificate
         end
     end
-    log.error("communication", "mqtt", "request_credentials", "failed", "code", code, "body", body)
+    log.error("communication", "mqtt", "request_certificate", "failed", "code", code, "body", body)
 
     return nil
 end
 
+-- Request MQTT broker endpoint from the new provisioning API (done on each boot)
+local function mqtt_request_broker_endpoint(device_id, certificate)
+    assert(device_id ~= nil and type(device_id) == "string" and device_id ~= "", "device_id must be a string")
+    assert(mqtt_validate_certificate(certificate), "valid certificate required")
+
+    log.debug("communication", "mqtt", "request_broker_endpoint")
+
+    -- New broker discovery endpoint
+    local code, headers, body = http.request("POST", "https://provision.nemopi.com/api/v1/broker", {}, json.encode({
+        imei = device_id
+    })).wait()
+    log.debug("communication", "mqtt", "request_broker_endpoint", "received", "code", code)
+    
+    if code == 200 then
+        local parsed = json.decode(body)
+        if type(parsed["host"]) == "string" and parsed["host"] ~= "" and 
+           type(parsed["port"]) == "number" then
+            log.debug("communication", "mqtt", "request_broker_endpoint", "success")
+            return {
+                host = parsed["host"],
+                port = parsed["port"]
+            }
+        end
+    end
+    log.error("communication", "mqtt", "request_broker_endpoint", "failed", "code", code, "body", body)
+
+    return nil
+end
+
+-- Get or provision certificate (stored persistently, only requested once)
+local function mqtt_get_certificate(device_id)
+    local certificate = fskv.get("mqtt_certificate")
+    if certificate and mqtt_validate_certificate(certificate) then
+        log.debug("communication", "mqtt", "get_certificate", "from fskv")
+        return certificate
+    end
+    
+    certificate = mqtt_request_certificate(device_id)
+    if certificate and mqtt_validate_certificate(certificate) then
+        log.debug("communication", "mqtt", "get_certificate", "from request")
+        fskv.set("mqtt_certificate", certificate)
+        return certificate
+    end
+    
+    log.error("communication", "mqtt", "get_certificate", "failed")
+    return nil
+end
+
+-- Build complete credentials from certificate and broker info
 local function mqtt_get_credentials(device_id)
-    local credentials = fskv.get("credentials")
-    if credentials and mqtt_validate_credentials(credentials) then
-        log.debug("communication", "mqtt", "get_credentials", "from fskv")
+    -- Step 1: Get or provision certificate (once per device)
+    local certificate = mqtt_get_certificate(device_id)
+    if not certificate then
+        log.error("communication", "mqtt", "get_credentials", "failed to get certificate")
+        return nil
+    end
+    
+    -- Step 2: Request broker endpoint (on each boot)
+    local broker = mqtt_request_broker_endpoint(device_id, certificate)
+    if not broker then
+        log.error("communication", "mqtt", "get_credentials", "failed to get broker endpoint")
+        return nil
+    end
+    
+    -- Step 3: Build complete credentials
+    local credentials = {
+        host = broker["host"],
+        port = broker["port"],
+        client_id = device_id,
+        username = device_id,
+        password = "",
+        cert = certificate["cert"],
+        key = certificate["key"]
+    }
+    
+    if mqtt_validate_credentials(credentials) then
+        log.debug("communication", "mqtt", "get_credentials", "success")
         return credentials
     end
-    credentials = mqtt_request_credentials(device_id)
-    if credentials and mqtt_validate_credentials(credentials) then
-        log.debug("communication", "mqtt", "get_credentials", "from request")
-        fskv.set("credentials", credentials) -- store new credentials in fskv
-        return credentials
-    end
-    log.error("communication", "mqtt", "get_credentials", "failed")
+    
+    log.error("communication", "mqtt", "get_credentials", "failed validation")
     return nil
 end
 

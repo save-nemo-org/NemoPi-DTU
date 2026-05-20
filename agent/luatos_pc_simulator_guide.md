@@ -31,11 +31,11 @@ Then bump the `Last checked:` stamp above and commit.
 ## What this guide is for
 
 The LuatOS-PC simulator is the Windows executable that runs the same `src/` Lua code
-without flashing it to the modem. In this repo it lives at `tools/bin/luatos-pc.exe`
-(+ `luat_uart_i686.dll`), launched via:
+without flashing it to the modem. In this repo it lives at
+`tools/luatos_pc/V<version>/luatos-pc.exe` (+ `luat_uart_i686.dll`), launched via:
 
 ```
-.\tools\bin\luatos-pc.exe .\platforms\PC\ .\src\
+.\tools\luatos_pc\V2031\luatos-pc.exe .\platforms\PC\ .\src\
 ```
 
 Stubs for the chip-only globals (`mobile`, `sms`, `libfota`) come from

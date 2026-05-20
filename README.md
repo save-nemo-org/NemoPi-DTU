@@ -192,5 +192,5 @@ A PC based simulator is available at https://github.com/openLuat/luatos-soc-pc, 
 Pre-compiled simulator binary:
 
 ```powershell
-.\tools\bin\luatos-pc.exe .\platforms\PC\ .\src\
+.\tools\luatos_pc\V2031\luatos-pc.exe .\platforms\PC\ .\src\
 ```

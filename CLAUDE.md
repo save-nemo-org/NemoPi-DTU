@@ -11,7 +11,7 @@ LuatOS-based firmware for a NemoPi Data Transfer Unit (DTU) built on the Hezhou 
 There is no test suite, linter, or compile step — Lua is loaded directly by LuatOS at boot.
 
 - **Flash to device (EC618):** use [Luatools_v3](https://luatos.com/luatools/download/last) (GUI, Windows-only). Point it at the `.soc` in `firmware_core/` plus `platforms/EC618/` and `src/`. Luatools picks up `PROJECT`/`VERSION` from `platforms/EC618/main.lua`. The Microsoft USB-CDC driver used by AIR780 in bootloader mode only works reliably on native Windows 10/11 — flashing from a VM fails.
-- **PC simulator:** `.\tools\bin\luatos-pc.exe .\platforms\PC\ .\src\` — runs the same `src/` code but with stub `mobile`, `sms`, `libfota` modules from `platforms/PC/`. Useful for exercising message-handling logic without hardware; networking/MQTT/Modbus will not behave realistically. **Simulate first** — see "Simulation-first workflow" below.
+- **PC simulator:** `.\tools\luatos_pc\V2031\luatos-pc.exe .\platforms\PC\ .\src\` — runs the same `src/` code but with stub `mobile`, `sms`, `libfota` modules from `platforms/PC/`. Real OS networking is used for `socket`, `http`, `mqtt`, `crypto`; `fskv` is backed by a `fskv.bin` file in the cwd; logs are written to `pclogs/<timestamp>.log`. What doesn't work: cellular APIs (`mobile.imei()` returns `"000000"`, `mobile.reqCellInfo()` returns `{}`), SMS, OTA via `libfota`, `uart`/`gpio`/`adc` hardware. **Simulate first** — see "Simulation-first workflow" below.
 - **OTA test server:** `python tools/ota_server/server.py` serves the current directory on port 8000 so the device can pull a `.bin` (Luatools-generated) via the `ota` command or `OTA <url>` SMS.
 
 ### Luatools Skill API
@@ -38,9 +38,11 @@ A local mirror lives at `agent/luatools_skill_api.md` (with a `Last checked:` st
 **Always copy the simulator exe and the firmware `.soc` into this repo before development**, so a checkout uniquely identifies the binary that was used. The repo already pins:
 
 - `firmware_core/LuatOS-SoC_V1113_EC618.soc` — the EC618 LuatOS core flashed alongside `src/`.
-- `tools/bin/luatos-pc.exe` (+ `luat_uart_i686.dll`) — the PC simulator binary.
+- `tools/luatos_pc/V<version>/luatos-pc.exe` (+ `luat_uart_i686.dll`) — the PC simulator, one directory per version. Current: `V2031`. Older versions are kept (e.g. `unknown_oct2025/`) with a per-version `README.md` recording source, hashes, and date copied in.
 
 Source for both: Luatools_v3 → resource download (or the Skill API). When you pull a new version, commit it.
+
+**Before running anything Luatools provides — the simulator, a flash, anything coming from the Skill API — first verify the binary pinned in this repo matches the latest in the developer's Luatools install.** Ask the developer for the Luatools folder path (typically contains `resource/LuatOS_PC/` for the simulator and per-chip subdirectories for firmware), compare versions, and copy + commit the newer one if it's behind. Running an older simulator than what Luatools currently ships leads to behaviour drift between simulation and hardware — the same script/firmware mismatch hazard the pinning policy exists to avoid.
 
 Hezhou chips support two OTA modes — **script-only** and **firmware + script**. A script built against a different `.soc` than the device is running can produce subtle, hard-to-debug failures. Keep every historical `.soc` we have ever shipped in `firmware_core/<version>/` with a short README noting the date range it was deployed and which fielded units are still on it, so we can service old devices on their original script until they are confidently migrated forward.
 
@@ -87,7 +89,7 @@ Topic conventions and JSON schemas are authoritative in `README.md` — when cha
 ## Conventions and gotchas
 
 - **LuatOS concurrency**: cooperative — every long operation is a `sys.taskInit(...)` and yields via `sys.wait(ms)` or `sys.waitUntil("EVENT", timeout)`. `sys.publish/subscribe` is the cross-task event bus.
-- **Globals**: `log`, `rtos`, `mqtt`, `pwm`, `mobile`, `fskv`, `crypto`, `sms`, `json`, `socket`, `pack`, `pm`, `http` are LuatOS C-side globals (declared in `.vscode/settings.json` for the Lua language server). `sys`/`sysplus` are exported by each platform's `main.lua`. The PC simulator stubs `mobile`, `sms`, and `libfota` only — anything that touches `mqtt`, `fskv`, `crypto`, `http` won't run there.
+- **Globals**: `log`, `rtos`, `mqtt`, `pwm`, `mobile`, `fskv`, `crypto`, `sms`, `json`, `socket`, `pack`, `pm`, `http` are LuatOS C-side globals (declared in `.vscode/settings.json` for the Lua language server). `sys`/`sysplus` are exported by each platform's `main.lua`. The PC simulator stubs `mobile`, `sms`, and `libfota` only — `mqtt`, `socket`, `http`, `crypto`, `fskv` work over real OS networking / disk.
 - **Watchdog**: 9 s timeout, fed every 3 s by a timer in `platforms/EC618/main.lua`. Any blocking call longer than ~6 s without yielding will reset the device.
 - **Forced 24 h reboot**: `platforms/EC618/main.lua` starts a `rtos.reboot` timer at boot. Long-lived state must survive a daily restart.
 - **APN is hardcoded** to `hologram` (`mobile.apn(0, 1, "hologram", "", "", nil, 0)`).

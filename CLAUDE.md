@@ -97,6 +97,7 @@ Topic conventions and JSON schemas are authoritative in `README.md` — when cha
 - **APN is hardcoded** to `hologram` (`mobile.apn(0, 1, "hologram", "", "", nil, 0)`).
 - **Sensitive data**: MQTT certs land in fskv only (never in source). The `certs/` and `ota/` directories are gitignored — don't commit binaries or credentials into them.
 - **Commit messages**: when the diff is Claude-generated (or substantially so), prefix the commit message with `claude:` — e.g. `claude: create simulator use skill`. Keeps it obvious in `git log` who wrote the change and makes Claude-authored commits easy to filter.
+- **Merge strategy**: prefer **squash merge** for PRs into `main`. WIP-style commits ("fix review comments", "address Copilot feedback", etc.) shouldn't end up in `main`'s history; squashing gives `main` one clean checkpoint per feature. Override the auto-generated subject with the PR title (and keep the `claude:` prefix when the diff was Claude-authored).
 
 ## Python tooling
 

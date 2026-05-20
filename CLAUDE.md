@@ -94,6 +94,7 @@ Topic conventions and JSON schemas are authoritative in `README.md` — when cha
 - **Forced 24 h reboot**: `platforms/EC618/main.lua` starts a `rtos.reboot` timer at boot. Long-lived state must survive a daily restart.
 - **APN is hardcoded** to `hologram` (`mobile.apn(0, 1, "hologram", "", "", nil, 0)`).
 - **Sensitive data**: MQTT certs land in fskv only (never in source). The `certs/` and `ota/` directories are gitignored — don't commit binaries or credentials into them.
+- **Commit messages**: when the diff is Claude-generated (or substantially so), prefix the commit message with `claude:` — e.g. `claude: create simulator use skill`. Keeps it obvious in `git log` who wrote the change and makes Claude-authored commits easy to filter.
 
 ## Python tooling
 

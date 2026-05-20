@@ -35,6 +35,8 @@ A local mirror lives at `agent/luatools_skill_api.md` (with a `Last checked:` st
 
 ### Simulator and firmware version pinning
 
+**Binaries are stored in Git LFS** (`.gitattributes` tracks `*.soc *.binpkg *.exe *.dll`). After cloning, run `git lfs install` once on your machine — otherwise checkouts will leave LFS pointers in place of the actual binaries.
+
 **Always copy the simulator exe and the firmware `.soc` into this repo before development**, so a checkout uniquely identifies the binary that was used. The repo already pins:
 
 - `firmware_core/LuatOS-SoC_V1113_EC618.soc` — the EC618 LuatOS core flashed alongside `src/`.

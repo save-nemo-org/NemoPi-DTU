@@ -39,8 +39,20 @@ without flashing it to the modem. In this repo it lives at
 ```
 
 Stubs for the chip-only globals (`mobile`, `sms`, `libfota`) come from
-`platforms/PC/`. Anything that touches `mqtt`, `fskv`, `crypto`, `http` will not
-behave realistically in the simulator. See `CLAUDE.md` → "Simulation-first workflow".
+`platforms/PC/`. Everything else — `socket`, `http`, `mqtt`, `crypto`, `fskv` — works
+over **real OS networking and disk**, so HTTPS/MQTT calls hit the network for real.
+What's missing is the cellular layer (no SIM, no `mobile.*`), SMS, OTA via `libfota`,
+and the `uart`/`gpio`/`adc` hardware interfaces. See `CLAUDE.md` → "Simulation-first
+workflow".
+
+## Editor notes on the mirrored content below
+
+The text below is a verbatim conversion of the upstream mkdocs page (see "How to
+refresh" above). A couple of issues worth knowing about before you copy-paste from it:
+
+- The `rtos.bsp()` snippet in §一 has a logic bug: `elseif rtos.bsp() ~= "Air8101"
+  or rtos.bsp() ~= "Air1601" then` is always true (a value can't differ from both at
+  once). The upstream author meant `and`. Don't paste it as-is.
 
 ---
 

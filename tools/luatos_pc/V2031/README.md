@@ -1,7 +1,9 @@
 # LuatOS-PC simulator V2031 (32-bit)
 
-Source: copied 2026-05-20 from
-`C:\Users\han\Code\luatools\resource\LuatOS_PC\LuatOS-SoC_V2031_PC\` on han's machine.
+Source: copied 2026-05-20 from a Luatools_v3 install, specifically the
+`resource/LuatOS_PC/LuatOS-SoC_V2031_PC/` subdirectory of that install. To refresh,
+ask the developer for their Luatools install path (Luatools_v3 is a portable install
+so the path varies per machine) and re-copy from the same relative location.
 
 | File | Size | SHA-256 |
 |---|---|---|

@@ -15,7 +15,7 @@ This skill is the canonical way to run the NemoPi-DTU firmware in the LuatOS-PC 
 
 The repo pins the simulator under `tools/luatos_pc/V<version>/`. Identify the newest directory there — that's the **currently pinned** version.
 
-Ask the user (only if not already known this session) for the path to their Luatools install folder. Default to `C:\Users\han\Code\luatools\` (confirmed earlier on han's machine) — but always confirm rather than assume on another machine. Inside, the simulator lives at `resource/LuatOS_PC/LuatOS-SoC_V<version>_PC/`.
+Ask the user (only if not already known this session) for the path to their Luatools install folder — Luatools_v3 is a portable install, so this varies per developer. Inside, the simulator lives at `resource/LuatOS_PC/LuatOS-SoC_V<version>_PC/`.
 
 Compare:
 - Pinned version (latest dir under `tools/luatos_pc/`)
@@ -99,7 +99,7 @@ Stop-Process -Name luatos-pc -Force -ErrorAction SilentlyContinue
 After stopping:
 - Summarise: did the run reach the expected milestones derived in step 3? Cite log line numbers and source file:line for any divergence.
 - If the run failed: name the specific source path that produced the failure and the upstream cause as evidenced by the log (e.g. an HTTP response code, a `sys.waitUntil` timeout, an assertion). Suggest a concrete next step — never a generic "try again".
-- The simulator leaves `pclogs/<timestamp>.log` and `fskv.bin` in the cwd. Both are gitignored. `fskv.bin` persists across runs (it simulates flash); if a test needs a clean KV state, delete it before launching.
+- The simulator leaves `pclogs/luatos_pc_<timestamp>.log` and `fskv.bin` in the cwd. Both are gitignored. `fskv.bin` persists across runs (it simulates flash); if a test needs a clean KV state, delete it before launching.
 
 ## Notes
 

@@ -26,13 +26,11 @@ luac.out
 *.exp
 
 # Shared objects (inc. Windows DLLs)
-*.dll
 *.so
 *.so.*
 *.dylib
 
 # Executables
-*.exe
 *.out
 *.app
 *.i*86
@@ -44,3 +42,15 @@ certs/*
 
 # ota
 ota/*
+
+.venv
+
+# Claude Code: ignore local settings, keep shared skills/commands/agents
+.claude/*
+!.claude/skills/
+!.claude/commands/
+!.claude/agents/
+
+# PC simulator runtime artifacts (written to cwd by luatos-pc.exe)
+pclogs/
+fskv.bin

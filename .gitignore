@@ -44,7 +44,12 @@ certs/*
 ota/*
 
 .venv
-.claude
+
+# Claude Code: ignore local settings, keep shared skills/commands/agents
+.claude/*
+!.claude/skills/
+!.claude/commands/
+!.claude/agents/
 
 # PC simulator runtime artifacts (written to cwd by luatos-pc.exe)
 pclogs/

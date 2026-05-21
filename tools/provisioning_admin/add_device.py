@@ -5,21 +5,18 @@ flipping it to a state where the device is allowed to call /certificate and /onb
 This is the operational counterpart to `src/provisioning.lua` — what the client expects
 the server-side row to look like before it can complete onboarding.
 
-## Setup (once per shell session)
+## Auth
 
-Populate the connection-string env var via `az` (PowerShell):
+Service principal via env vars (`EnvironmentCredential` from azure-identity):
 
-    $env:AZURE_STORAGE_CONNECTION_STRING = az storage account show-connection-string `
-        --name nemopideviceonboarding --query connectionString -o tsv
+    AZURE_TENANT_ID
+    AZURE_CLIENT_ID
+    AZURE_CLIENT_SECRET
 
-Bash equivalent:
-
-    export AZURE_STORAGE_CONNECTION_STRING="$(az storage account show-connection-string \
-        --name nemopideviceonboarding --query connectionString -o tsv)"
-
-You need `az login` first; signed-in user needs `Microsoft.Storage/storageAccounts/`
-`listKeys/action` to read the connection string (included in Contributor on the
-storage account / RG / subscription).
+The principal needs the `Storage Table Data Contributor` role on the storage account
+(granted to it by an Azure admin, once). No other auth path is enabled — if the env
+vars aren't set, the script fails loud rather than silently using whatever `az login`
+happens to have cached.
 
 ## Usage
 
@@ -37,45 +34,32 @@ storage account / RG / subscription).
     manufacturer, model        = <--manufacturer, --model; default values below>
     provisioningMetadata       = "{}"
 
-The script is an upsert (merge): if the row already exists, only the listed fields are
-overwritten — other fields the server may have set (certificateIssuedAt, etc.) are
-preserved unless --reset is passed.
-
-With --reset, the script additionally clears server-set fields so the IMEI can run
-the full /certificate flow again. The server README marks those fields "do not modify"
-in production; --reset is intended for dev/test cycles only.
+Upsert (merge): if the row already exists, only the listed fields are overwritten —
+server-set fields (certificateIssuedAt, etc.) are preserved unless --reset is passed.
+With --reset, those server-set fields are cleared too so the IMEI can run the full
+/certificate flow again. Dev/test only.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from typing import Any
 
-# Windows default console encoding (cp1252) can't render the em-dashes / quotes used
-# in this module's docs and output. Force UTF-8 on the streams we own.
+# Force UTF-8 on Windows so the em-dashes in our output don't blow up under cp1252.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-from azure.core.exceptions import HttpResponseError
+from azure.core.exceptions import ClientAuthenticationError, HttpResponseError
 from azure.data.tables import TableClient, UpdateMode
+from azure.identity import EnvironmentCredential
 
-ENV_VAR = "AZURE_STORAGE_CONNECTION_STRING"
+DEFAULT_STORAGE_ACCOUNT = "nemopideviceonboarding"
 DEFAULT_TABLE = "devices"
 DEFAULT_PARTITION = "nemopi"
 DEFAULT_MANUFACTURER = "Save Nemo e.V."
 DEFAULT_MODEL = "nemopi-002"
-
-SETUP_HINT = f"""\
-Set {ENV_VAR} first. PowerShell:
-  $env:{ENV_VAR} = az storage account show-connection-string `
-      --name nemopideviceonboarding --query connectionString -o tsv
-Bash:
-  export {ENV_VAR}="$(az storage account show-connection-string \\
-      --name nemopideviceonboarding --query connectionString -o tsv)"\
-"""
 
 
 def build_entity(args: argparse.Namespace) -> dict[str, Any]:
@@ -90,8 +74,6 @@ def build_entity(args: argparse.Namespace) -> dict[str, Any]:
         "provisioningMetadata": args.provisioning_metadata,
     }
     if args.reset:
-        # Server-managed fields cleared on the client side so the IMEI can re-issue
-        # certs from scratch. Production: don't use this. Dev/test: it's the point.
         entity.update({
             "certificateIssuedAt": None,
             "certificateExpiry": None,
@@ -108,46 +90,50 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--imei", required=True, help="Device IMEI / RowKey")
+    parser.add_argument("--storage-account", default=DEFAULT_STORAGE_ACCOUNT, help=f"Storage account name (default: {DEFAULT_STORAGE_ACCOUNT})")
     parser.add_argument("--table-name", default=DEFAULT_TABLE, help=f"Table name (default: {DEFAULT_TABLE})")
     parser.add_argument("--partition-key", default=DEFAULT_PARTITION, help=f"Partition key (default: {DEFAULT_PARTITION})")
     parser.add_argument("--manufacturer", default=DEFAULT_MANUFACTURER, help=f"manufacturer field (default: {DEFAULT_MANUFACTURER!r})")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"model field (default: {DEFAULT_MODEL!r})")
-    parser.add_argument(
-        "--developer",
-        action="store_true",
-        help="Set isDeveloperDevice=true (certs signed by Dev CA, onboarded to sandbox broker)",
-    )
-    parser.add_argument(
-        "--provisioning-metadata",
-        default="{}",
-        help='provisioningMetadata field (JSON string, default: "{}")',
-    )
-    parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Also clear server-set cert/onboarding fields so the IMEI can run the full flow again (dev/test only)",
-    )
+    parser.add_argument("--developer", action="store_true", help="Set isDeveloperDevice=true (Dev CA / sandbox broker)")
+    parser.add_argument("--provisioning-metadata", default="{}", help='provisioningMetadata field (JSON string, default: "{}")')
+    parser.add_argument("--reset", action="store_true", help="Clear server-set cert/onboarding fields (dev/test only)")
     args = parser.parse_args()
 
-    conn = os.environ.get(ENV_VAR)
-    if not conn:
-        print(f"ERROR: {ENV_VAR} is not set.\n\n{SETUP_HINT}", file=sys.stderr)
-        return 1
-
-    client = TableClient.from_connection_string(conn, table_name=args.table_name)
+    client = TableClient(
+        endpoint=f"https://{args.storage_account}.table.core.windows.net",
+        table_name=args.table_name,
+        credential=EnvironmentCredential(),
+    )
 
     entity = build_entity(args)
     action = "RESET + UPSERT" if args.reset else "UPSERT"
-    print(f"{action} table={args.table_name} :: {entity['PartitionKey']}/{entity['RowKey']}")
+    print(f"{action} {args.storage_account}/{args.table_name} :: {entity['PartitionKey']}/{entity['RowKey']}")
     for k, v in entity.items():
-        if k in ("PartitionKey", "RowKey"):
-            continue
-        print(f"  {k} = {v!r}")
+        if k not in ("PartitionKey", "RowKey"):
+            print(f"  {k} = {v!r}")
 
     try:
         client.upsert_entity(entity=entity, mode=UpdateMode.MERGE)
+    except ClientAuthenticationError as exc:
+        print(
+            "\nERROR: Azure authentication failed.\n"
+            "  Set AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET for the\n"
+            "  provisioning service principal.\n"
+            f"  Underlying: {exc}",
+            file=sys.stderr,
+        )
+        return 1
     except HttpResponseError as exc:
-        print(f"\nERROR: {exc.status_code} {exc.reason}\n  {exc.message}", file=sys.stderr)
+        if exc.status_code == 403:
+            print(
+                f"\nERROR: 403 Forbidden on table '{args.table_name}'.\n"
+                f"  The authenticated principal needs the 'Storage Table Data Contributor' role\n"
+                f"  on storage account '{args.storage_account}'.",
+                file=sys.stderr,
+            )
+        else:
+            print(f"\nERROR: {exc.status_code} {exc.reason}\n  {exc.message}", file=sys.stderr)
         return 1
 
     print("\nOK. Device is now eligible for /certificate and /onboard.")

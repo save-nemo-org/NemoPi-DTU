@@ -111,7 +111,11 @@ For a **clean-slate retest** (e.g. to verify the cert-issuance branch end-to-end
 ## Operational helpers
 
 - `tools/provisioning_admin/add_device.py` — upsert a row in the devices table with
-  `allowCertificateIssuance=true allowProvisioning=true`. Idempotent. See `--help`.
+  `allowCertificateIssuance=true allowProvisioning=true`. Idempotent. Authenticates
+  via `EnvironmentCredential` — set `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/
+  `AZURE_CLIENT_SECRET` for the provisioning service principal (must have
+  `Storage Table Data Contributor` on the storage account). No `az login` fallback —
+  missing env vars fail loud. See `--help`.
 
 ## Tested against
 

@@ -125,6 +125,6 @@ When you add a new Python helper that needs third-party libs, install them into 
 
 ## CI
 
-`.github/workflows/integration-test-simulator.yml` runs the PC simulator end-to-end against the production provisioning service on every push/PR. The runner resets the shared test IMEI (`hantest1`) via `add_device.py`, launches the simulator, and watches the log for either `I/user.main setup` (success — provisioning completed and MQTT connected) or the failure markers. Concurrency is serialised (single global lock) because `hantest1` is shared.
+`.github/workflows/integration-test-simulator.yml` runs the PC simulator end-to-end against the production provisioning service on every push/PR. The runner resets the CI-owned IMEI `ci-pipeline` via `add_device.py --reset` (auto-creates the row on first run), launches the simulator, and watches the log for either `I/user.main setup` (success — provisioning completed and MQTT connected) or the failure markers. Concurrency is serialised (single global lock) because `ci-pipeline` is shared across CI runs. Don't reuse `ci-pipeline` for local testing.
 
 Requires three repo secrets — `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` — for the service principal the workflow authenticates as.

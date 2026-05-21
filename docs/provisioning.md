@@ -122,8 +122,10 @@ For a **clean-slate retest** (e.g. to verify the cert-issuance branch end-to-end
 `.github/workflows/integration-test-simulator.yml` runs the full provisioning flow in
 the PC simulator on every push/PR. The job:
 
-1. Resets `hantest1` server-side via `add_device.py --reset`.
-2. Launches the pinned simulator with `NEMOPI_TEST_IMEI=hantest1`.
+1. Resets the CI-owned IMEI `ci-pipeline` server-side via `add_device.py --reset`
+   (the row is auto-created on first run — no manual setup of the devices table
+   needed). Don't reuse this IMEI for local testing.
+2. Launches the pinned simulator with `NEMOPI_TEST_IMEI=ci-pipeline`.
 3. Polls the log for `I/user.main setup` (success — provisioning completed, MQTT
    connected, script entered the main loop) or the failure markers
    (`E/user.communication init failed`, `reboot_with_delay_blocking`).

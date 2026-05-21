@@ -9,8 +9,12 @@
 #   AZURE_CLIENT_ID      ├  the principal needs `Storage Table Data Contributor`
 #   AZURE_CLIENT_SECRET  ┘  on the nemopideviceonboarding storage account.
 #
-# The test IMEI (`hantest1`) is shared, so runs are serialised by the
-# `concurrency` block — only one job at a time across the whole repo.
+# The test IMEI (`ci-pipeline`) is CI-owned: don't reuse it for local manual
+# testing, and don't point local runs at production IMEIs that the pipeline
+# might reset. The row is auto-created by `add_device.py --reset` on the
+# first run, so no manual pre-seeding of the devices table is required.
+# Runs are serialised by the `concurrency` block since the IMEI is shared
+# across all CI invocations — only one job at a time across the whole repo.
 
 name: integration-test-simulator
 
@@ -39,7 +43,7 @@ jobs:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      NEMOPI_TEST_IMEI: hantest1
+      NEMOPI_TEST_IMEI: ci-pipeline
     defaults:
       run:
         shell: pwsh

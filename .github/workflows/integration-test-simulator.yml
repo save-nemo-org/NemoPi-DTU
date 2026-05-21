@@ -68,23 +68,15 @@ jobs:
           .\.venv\Scripts\python.exe tools\provisioning_admin\add_device.py `
             --imei $env:NEMOPI_TEST_IMEI --developer --reset
 
-      - name: Locate pinned simulator
-        id: find_sim
-        run: |
-          $simDir = Get-ChildItem tools\luatos_pc -Directory |
-            Where-Object { $_.Name -match '^V\d+' } |
-            Sort-Object Name -Descending | Select-Object -First 1
-          if (-not $simDir) { throw "no V<n> directory under tools/luatos_pc" }
-          $exe = Join-Path $simDir.FullName 'luatos-pc.exe'
-          if (-not (Test-Path $exe)) { throw "$exe missing — was LFS pulled?" }
-          "exe=$exe" >> $env:GITHUB_OUTPUT
-          Write-Host "Using simulator: $exe ($($simDir.Name))"
-
       - name: Launch simulator (clean fskv)
+        # Bump this path when a new simulator version is pinned (see
+        # CLAUDE.md → Simulator and firmware version pinning).
         run: |
+          $exe = '.\tools\luatos_pc\V2031\luatos-pc.exe'
+          if (-not (Test-Path $exe)) { throw "$exe missing — was LFS pulled?" }
           if (Test-Path fskv.bin) { Remove-Item fskv.bin -Force }
           if (Test-Path pclogs)   { Remove-Item pclogs -Recurse -Force }
-          Start-Process -FilePath "${{ steps.find_sim.outputs.exe }}" `
+          Start-Process -FilePath $exe `
             -ArgumentList ".\platforms\PC\", ".\src\" -WindowStyle Hidden
 
       - name: Wait for provisioning success or failure markers

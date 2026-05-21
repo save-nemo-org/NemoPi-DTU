@@ -117,6 +117,23 @@ For a **clean-slate retest** (e.g. to verify the cert-issuance branch end-to-end
   `Storage Table Data Contributor` on the storage account). No `az login` fallback —
   missing env vars fail loud. See `--help`.
 
+## Continuous integration
+
+`.github/workflows/integration-test-simulator.yml` runs the full provisioning flow in
+the PC simulator on every push/PR. The job:
+
+1. Resets `hantest1` server-side via `add_device.py --reset`.
+2. Launches the pinned simulator with `NEMOPI_TEST_IMEI=hantest1`.
+3. Polls the log for `I/user.main setup` (success — provisioning completed, MQTT
+   connected, script entered the main loop) or the failure markers
+   (`E/user.communication init failed`, `reboot_with_delay_blocking`).
+4. Uploads the full simulator log as an artifact on failure.
+
+Runs are serialised by a GitHub Actions `concurrency` group because the test IMEI is
+shared. The workflow needs three repo secrets (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+`AZURE_CLIENT_SECRET`) for the same service principal that `add_device.py` uses
+locally.
+
 ## Tested against
 
 - Simulator (V2031) → `provisioning.nemopi.com` production, IMEI `hantest1`,

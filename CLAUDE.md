@@ -137,6 +137,9 @@ Exit code 0 = all pass; non-zero = any failure. Test source: `test/test_provisio
 
 ## CI
 
-`.github/workflows/integration-test-simulator.yml` runs the PC simulator end-to-end against the production provisioning service on every push/PR. The runner resets the CI-owned IMEI `ci-pipeline` via `add_device.py --reset` (auto-creates the row on first run), launches the simulator, and watches the log for either `I/user.main setup` (success — provisioning completed and MQTT connected) or the failure markers. Concurrency is serialised (single global lock) because `ci-pipeline` is shared across CI runs. Don't reuse `ci-pipeline` for local testing.
+`.github/workflows/integration-test-simulator.yml` has two jobs:
+
+1. **`unit-tests`** — runs the `test/` suite via the PC simulator. No Azure secrets, no network. ~30 s including LFS checkout. Gates the integration test below.
+2. **`simulate`** — runs the PC simulator end-to-end against the production provisioning service. Resets the CI-owned IMEI `ci-pipeline` via `add_device.py --reset` (auto-creates the row on first run), launches the simulator, and watches the log for either `I/user.main setup` (success — provisioning completed and MQTT connected) or the failure markers. Concurrency is serialised (single global lock) because `ci-pipeline` is shared across CI runs. Don't reuse `ci-pipeline` for local testing.
 
 Requires three repo secrets — `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` — for the service principal the workflow authenticates as.

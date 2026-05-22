@@ -36,7 +36,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  unit-tests:
+    runs-on: windows-latest
+    timeout-minutes: 3
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout (with LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Run unit tests via PC simulator
+        # Uses the same pinned simulator the integration test uses, just
+        # with the test/ directory as the entry point. Fakes for http +
+        # fskv mean this is pure-Lua and needs no Azure secrets.
+        run: |
+          $exe = '.\tools\luatos_pc\V2031\luatos-pc.exe'
+          if (-not (Test-Path $exe)) { throw "$exe missing — was LFS pulled?" }
+          & $exe ".\test\" ".\src\"
+          if ($LASTEXITCODE -ne 0) { throw "Unit tests failed: exit $LASTEXITCODE" }
+
   simulate:
+    needs: unit-tests
     runs-on: windows-latest
     timeout-minutes: 10
     env:

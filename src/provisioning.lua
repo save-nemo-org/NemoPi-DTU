@@ -229,19 +229,33 @@ end
     or nil on any unrecoverable failure (logged at source).
 ]]
 --[[
-    Drop the cached cert/key/endpoint so the next `get_credentials` call re-runs
-    the full /certificate + /onboard flow. Call this when downstream auth fails in
-    a way that points at stale credentials — e.g. the MQTT broker rejected our
-    client cert. Do not call on network-only failures; those will recover on
-    their own without burning the cert.
+    Build a credentials struct from the fskv cache alone — no HTTP calls.
+    Returns nil if any of cert_b64 / key_b64 / mqtt_host is missing or empty.
+
+    This is the fast path on warm boots: communication.lua tries the cached
+    credentials first and only falls back to `get_credentials` (which hits
+    /onboard and possibly /certificate) if the cached attempt doesn't make
+    it through MQTT.
 ]]
-function provisioning.invalidate()
-    fskv.del("cert_b64")
-    fskv.del("key_b64")
-    fskv.del("cert_expiry")
-    fskv.del("cert_thumbprint")
-    fskv.del("mqtt_host")
-    log.warn("provisioning", "invalidate", "cleared cached cert + endpoint")
+function provisioning.load_cached_credentials(imei)
+    assert(type(imei) == "string" and #imei > 0, "imei must be non-empty string")
+
+    local cert_b64 = fskv.get("cert_b64")
+    local key_b64 = fskv.get("key_b64")
+    local mqtt_host = fskv.get("mqtt_host")
+    if type(cert_b64) ~= "string" or #cert_b64 == 0 then return nil end
+    if type(key_b64)  ~= "string" or #key_b64  == 0 then return nil end
+    if type(mqtt_host) ~= "string" or #mqtt_host == 0 then return nil end
+
+    return {
+        host = mqtt_host,
+        port = MQTT_PORT,
+        client_id = imei,
+        username = imei,
+        password = "",
+        cert = provisioning.cert_pem(cert_b64),
+        key = provisioning.key_pem(key_b64),
+    }
 end
 
 

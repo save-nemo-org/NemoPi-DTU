@@ -104,51 +104,57 @@ function tests.test_get_credentials_uses_cached_cert()
     A.assert_contains(calls[1].url, "/onboard", "expected /onboard call")
 end
 
--- #4: invalidate() drops the cached credentials, so the next get_credentials
--- re-runs the full /certificate + /onboard flow. communication.lua calls
--- invalidate() on MQTT connect timeout (broker rejected the cert), which is
--- how the system recovers from credential-related failure without the
--- network being at fault.
-function tests.test_invalidate_clears_cache_and_next_call_reprovisions()
+-- #4: load_cached_credentials returns a complete creds struct from the fskv
+-- cache alone, with no HTTP calls. This is the fast path communication.lua
+-- uses on warm boots before falling through to fresh provisioning.
+--
+-- The "if creds don't work, go back to provisioning" half of requirement #4
+-- lives in communication.init's two-attempt orchestration (cached → fresh)
+-- and is exercised by the integration test in
+-- .github/workflows/integration-test-simulator.yml; the choice not to
+-- auto-invalidate the cert on MQTT failure is documented in
+-- communication.lua and docs/provisioning.md.
+function tests.test_load_cached_credentials_returns_creds_when_cache_complete()
     fskv.preload({
-        cert_b64 = "OLD_CERT",
-        key_b64 = "OLD_KEY",
-        cert_expiry = "2030-01-01T00:00:00Z",
-        cert_thumbprint = "OLDFP",
-        mqtt_host = "old.broker.example.net",
+        cert_b64 = "CACHED_CERT",
+        key_b64 = "CACHED_KEY",
+        mqtt_host = "cached.broker.example.net",
     })
 
-    provisioning.invalidate()
+    local creds = provisioning.load_cached_credentials("test-imei")
 
-    local snap = fskv.snapshot()
-    A.assert_nil(snap.cert_b64, "cert_b64 should be cleared")
-    A.assert_nil(snap.key_b64, "key_b64 should be cleared")
-    A.assert_nil(snap.cert_expiry, "cert_expiry should be cleared")
-    A.assert_nil(snap.cert_thumbprint, "cert_thumbprint should be cleared")
-    A.assert_nil(snap.mqtt_host, "mqtt_host should be cleared")
+    A.assert_truthy(creds, "expected creds from full cache")
+    A.assert_eq(creds.host, "cached.broker.example.net", "host from cache")
+    A.assert_eq(creds.port, 8883, "port")
+    A.assert_eq(creds.client_id, "test-imei", "client_id")
+    A.assert_eq(creds.username, "test-imei", "username")
+    A.assert_contains(creds.cert, "BEGIN CERTIFICATE", "cert PEM header")
+    A.assert_contains(creds.cert, "CACHED_CERT", "cert body")
+    A.assert_contains(creds.key, "BEGIN PRIVATE KEY", "key PEM header")
+    A.assert_contains(creds.key, "CACHED_KEY", "key body")
 
-    -- After invalidation, get_credentials must hit /certificate again.
-    http.queue({code = 200, body = json.encode({
-        certificate = "FRESH_CERT",
-        privateKey = "FRESH_KEY",
-        thumbprint = "NEWFP",
-        expiry = "2031-01-01T00:00:00Z",
-    })})
-    http.queue({code = 200, body = json.encode({
-        id = "op-3",
-        status = "succeeded",
-        result = {endpoints = {{kind = "mqtt", hostname = "new.broker.example.net"}}},
-    })})
+    -- The whole point of this fast path: zero HTTP calls.
+    A.assert_eq(#http.calls(), 0, "load_cached_credentials must not hit HTTP")
+end
 
-    local creds = provisioning.get_credentials("test-imei", {})
-    A.assert_truthy(creds, "expected fresh credentials after invalidate")
-    A.assert_contains(creds.cert, "FRESH_CERT", "fresh cert used, not old one")
-    A.assert_eq(creds.host, "new.broker.example.net", "fresh broker hostname")
+-- load_cached_credentials returns nil if any of the three required keys is
+-- missing, so communication.init falls through cleanly to fresh provisioning.
+function tests.test_load_cached_credentials_returns_nil_when_incomplete()
+    -- empty cache
+    A.assert_nil(provisioning.load_cached_credentials("test-imei"),
+        "empty cache should yield nil")
 
-    local calls = http.calls()
-    A.assert_eq(#calls, 2, "expected 2 calls after invalidate (cert + onboard)")
-    A.assert_contains(calls[1].url, "/certificate", "first call /certificate")
-    A.assert_contains(calls[2].url, "/onboard", "second call /onboard")
+    -- cert only
+    fskv.preload({cert_b64 = "CACHED_CERT"})
+    A.assert_nil(provisioning.load_cached_credentials("test-imei"),
+        "cert-only cache should yield nil")
+
+    -- cert + key but no mqtt_host (the common in-between state after
+    -- /certificate succeeded but /onboard never did)
+    fskv.reset()
+    fskv.preload({cert_b64 = "CACHED_CERT", key_b64 = "CACHED_KEY"})
+    A.assert_nil(provisioning.load_cached_credentials("test-imei"),
+        "missing mqtt_host should yield nil")
 end
 
 return tests

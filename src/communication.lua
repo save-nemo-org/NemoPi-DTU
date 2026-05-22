@@ -86,24 +86,16 @@ local function mqtt_create_client(credentials, sub_topics)
     return mqtt_client
 end
 
-function communication.init(device_id, sub_topics)
-    assert(type(device_id) == "string" and #device_id > 0, "device_id must be a string")
-    assert(type(sub_topics) == "table", "sub_topics is a list of strings")
-    assert(communication.mqtt_client == nil, "communication module can only be initialized once")
-
-    log.info("communication", "network_setup")
-    if not network_setup() then
-        log.error("communication", "network_setup", "failed")
-        return false
+-- Build + connect an MQTT client from `credentials`. Returns true on CONNACK,
+-- false on validation failure / timeout. Best-effort closes a previous client
+-- if one was left over from a failed first attempt.
+local function try_mqtt_connect(credentials, sub_topics)
+    if communication.mqtt_client then
+        pcall(function() communication.mqtt_client:close() end)
+        communication.mqtt_client = nil
     end
 
-    log.info("communication", "provisioning.get_credentials")
-    local credentials = provisioning.get_credentials(device_id, {
-        os = "LuatOS",
-        firmwareVersion = VERSION,
-    })
-    if not credentials or not mqtt_validate_credentials(credentials) then
-        log.error("communication", "provisioning.get_credentials", "failed")
+    if not mqtt_validate_credentials(credentials) then
         return false
     end
 
@@ -112,19 +104,68 @@ function communication.init(device_id, sub_topics)
 
     log.info("communication", "mqtt connect")
     communication.mqtt_client:connect()
-    if not sys.waitUntil("MQTT_CONNECTED", 60 * 1000) then
-        -- We reached this point only after network_setup() succeeded and
-        -- provisioning returned credentials, so the broker host name is
-        -- known-good and the network is reachable. A connect timeout here
-        -- most likely means the broker rejected our cert (mismatch with the
-        -- thumbprint the server has on file, or expiry). Drop the cache so
-        -- the next boot re-runs the full provisioning flow.
-        log.error("communication", "mqtt connect", "timeout — invalidating cached credentials")
-        provisioning.invalidate()
+    if sys.waitUntil("MQTT_CONNECTED", 60 * 1000) then
+        return true
+    end
+    log.error("communication", "mqtt connect", "timeout")
+    pcall(function() communication.mqtt_client:close() end)
+    communication.mqtt_client = nil
+    return false
+end
+
+--[[
+    Two-attempt boot:
+      1. Try whatever's in the fskv cache (no HTTP). Covers the steady-state
+         warm boot where nothing has changed since the last successful run.
+      2. On failure (or empty cache), fall through to fresh provisioning —
+         that calls /onboard and, if no cert is cached, /certificate.
+
+    We deliberately do NOT auto-invalidate the cached cert on MQTT failure:
+      - A network blip would burn the cert for no reason, and
+      - /certificate is one-shot per IMEI (server flips
+        allowCertificateIssuance=false after first success), so a needless
+        invalidate can wedge the device permanently if the next request 400s.
+    If the cert is genuinely bad (broker rejects the thumbprint), /onboard
+    will eventually 403 too and the device just keeps sleeping 30 min between
+    attempts until an admin resets the row.
+]]
+function communication.init(device_id, sub_topics)
+    assert(type(device_id) == "string" and #device_id > 0, "device_id must be a string")
+    assert(type(sub_topics) == "table", "sub_topics is a list of strings")
+
+    log.info("communication", "network_setup")
+    if not network_setup() then
+        log.error("communication", "network_setup", "failed")
         return false
     end
 
-    return true
+    -- Attempt 1: cached creds, no HTTP.
+    local credentials = provisioning.load_cached_credentials(device_id)
+    if credentials then
+        log.info("communication", "attempt 1: cached credentials")
+        if try_mqtt_connect(credentials, sub_topics) then
+            return true
+        end
+        log.warn("communication", "cached credentials didn't connect, falling through to fresh provisioning")
+    else
+        log.info("communication", "no cached credentials, going straight to provisioning")
+    end
+
+    -- Attempt 2: fresh /onboard (and /certificate if cert wasn't cached).
+    log.info("communication", "attempt 2: provisioning.get_credentials")
+    credentials = provisioning.get_credentials(device_id, {
+        os = "LuatOS",
+        firmwareVersion = VERSION,
+    })
+    if not credentials then
+        log.error("communication", "provisioning.get_credentials", "failed")
+        return false
+    end
+    if try_mqtt_connect(credentials, sub_topics) then
+        return true
+    end
+    log.error("communication", "fresh credentials didn't connect either")
+    return false
 end
 
 function communication.publish(topic, payload)

@@ -110,18 +110,42 @@ For a **clean-slate retest** (e.g. to verify the cert-issuance branch end-to-end
 
 ## Public API
 
-- `provisioning.get_credentials(imei, metadata)` — main entry. Returns a struct
-  `{host, port, client_id, username, password, cert, key}` ready for `mqtt.create`,
-  or nil on any failure (logged at source). Reads/writes the fskv cache.
-- `provisioning.invalidate()` — drops every fskv key this module owns. Called by
-  `communication.lua` when MQTT connect times out after network setup succeeded
-  — that combination usually means the broker rejected our client cert (thumbprint
-  mismatch, expiry, revoked) rather than a network problem, so the next boot
-  re-runs the full /certificate + /onboard flow. Don't call this on plain network
-  failures; they recover without burning the cert.
+- `provisioning.load_cached_credentials(imei)` — pure-cache read; returns a
+  full credentials struct if `cert_b64` + `key_b64` + `mqtt_host` are all
+  present in fskv, otherwise nil. Zero HTTP calls. Used by `communication.lua`
+  as the fast path on warm boots.
+- `provisioning.get_credentials(imei, metadata)` — full provisioning flow.
+  Returns a struct `{host, port, client_id, username, password, cert, key}`
+  ready for `mqtt.create`, or nil on failure (logged at source). Reads/writes
+  the fskv cache; calls `/onboard` always and `/certificate` if no cert is
+  cached.
 - `provisioning.cert_pem(b64)` / `provisioning.key_pem(b64)` — base64-to-PEM
   wrappers. Public so tests can exercise them; production callers go through
-  `get_credentials`.
+  the two above.
+
+## Caller orchestration (`communication.lua`)
+
+`communication.init(device_id, sub_topics)` does a two-attempt boot:
+
+1. `load_cached_credentials` → try MQTT. If the CONNACK arrives within 60 s,
+   we're done. This is the steady-state warm boot — no HTTP.
+2. Otherwise `get_credentials` → try MQTT again. The fresh `/onboard` covers
+   the case where the broker assignment changed since last boot; the cached
+   cert (if still valid) is reused.
+
+If both attempts fail, `communication.init` returns false and `nemopi.lua`
+sleeps 30 min before rebooting to retry.
+
+**Deliberate non-behaviour: no auto-invalidation of the cert on MQTT failure.**
+A network blip during the MQTT TLS handshake looks identical to a broker-side
+cert rejection from the device's vantage point, so heuristically dropping the
+cached cert risks burning a perfectly good one. And because `/certificate` is
+one-shot per IMEI server-side (`allowCertificateIssuance` flips to false
+after the first 200), the wrong call here can wedge the device permanently.
+If the cert is genuinely bad, `/onboard` will keep returning 403 ("device is
+not authorized to onboard" — thumbprint mismatch), the 30-min retry loop
+keeps trying, and an operator notices and resets the row in the devices
+table to release the gate.
 
 ## Operational helpers
 

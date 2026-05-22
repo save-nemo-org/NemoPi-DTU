@@ -27,9 +27,15 @@ function power.internal.disable()
 end
 
 function power.internal.vbat()
+    -- vbat scaling depends on the carrier board's resistor divider.
+    -- Platform main.lua sets _G.HW.vbat_scale_num / vbat_scale_den per board;
+    -- defaults preserve the original EC618 carrier behaviour.
+    --   vbat = adc.get(ADC_ID) * vbat_scale_num / vbat_scale_den
+    local num = (HW and HW.vbat_scale_num) or 3300
+    local den = (HW and HW.vbat_scale_den) or 103300
     local result = 0
     for i = 1, 10 do
-        local voltage = adc.get(ADC_ID) * 3300 / 103300
+        local voltage = adc.get(ADC_ID) * num / den
         result = result + voltage / 10
         sys.wait(100)
     end

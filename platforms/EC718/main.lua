@@ -1,0 +1,56 @@
+-- Required by LuaTools for firmware generation.
+-- Boots the same nemopi.lua application as the EC618 platform; only chip /
+-- carrier-board specifics live here.
+--
+-- Target hardware: YED G2111Y-E (Yinerda) carrier board with a Y100EP module
+-- (Hezhou Air780EP rebadge, EC718 silicon, RS485 variant). Pinout cross-ref:
+-- 银尔达Air780系列产品二次开发手册.pdf §45.
+PROJECT = "nemopi-dtu"
+VERSION = "0.0.1"
+
+_G.sys = require("sys")
+_G.sysplus = require("sysplus")
+
+log.setLevel(log.LOG_INFO)
+
+-- Validate BSP
+assert(rtos.bsp() == "EC718", "EC718 Firmware only")
+
+-- Hardware-specific knobs read by chip-agnostic code in src/.
+-- G2111Y-E supply-voltage divider per manual: vbat = adc * 273300 / 3300
+-- (~82.8x, designed for inputs up to 90 V).
+_G.HW = {
+    vbat_scale_num = 273300,
+    vbat_scale_den = 3300,
+}
+
+-- Air780EP carrier doesn't expose the chip's PWK debouncing knob the same
+-- way EC618 does; guarded so we no-op if pm.PWK_MODE isn't present.
+if pm and pm.PWK_MODE then
+    pm.power(pm.PWK_MODE, false)
+end
+
+-- External windowed watchdog (AIR153C-style) lives on GPIO28 on this
+-- carrier. Toggle every 100 s — comfortably under the manual's recommended
+-- 150 s ceiling, slow enough that a windowed implementation won't reset us
+-- for kicking too fast. The chip's `wdt` module on the modem itself is not
+-- the same thing and is not used here.
+local EXT_WDT_GPIO = 28
+local ext_wdt_state = 0
+gpio.setup(EXT_WDT_GPIO, ext_wdt_state)
+sys.timerLoopStart(function()
+    ext_wdt_state = 1 - ext_wdt_state
+    gpio.set(EXT_WDT_GPIO, ext_wdt_state)
+end, 100 * 1000)
+
+-- Forced reboot every 24 h. Long-lived state must survive a daily restart.
+sys.timerStart(rtos.reboot, 24 * 3600 * 1000)
+
+mobile.apn(0, 1, "hologram", "", "", nil, 0)
+
+local nemopi = require("nemopi")
+
+-- End of User Code ---------------------------------------------
+-- Start scheduler
+sys.run()
+-- Don't program after sys.run()

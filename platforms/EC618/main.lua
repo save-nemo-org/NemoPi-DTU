@@ -10,6 +10,13 @@ log.setLevel(log.LOG_INFO)
 -- Validate BSP
 assert(rtos.bsp() == "EC618", "EC618 Firmware only")
 
+-- Hardware-specific knobs read by chip-agnostic code in src/.
+-- Carrier here is the existing EC618 board: vbat = adc * 3300 / 103300.
+_G.HW = {
+    vbat_scale_num = 3300,
+    vbat_scale_den = 103300,
+}
+
 -- Disable power key debouncing
 if rtos.bsp() == "EC618" and pm and pm.PWK_MODE then
     pm.power(pm.PWK_MODE, false)

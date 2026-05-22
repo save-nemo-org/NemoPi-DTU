@@ -40,7 +40,8 @@ A local mirror lives at `agent/luatools_skill_api.md` (with a `Last checked:` st
 
 **Always copy the simulator exe and the firmware `.soc` into this repo before development**, so a checkout uniquely identifies the binary that was used. The repo already pins:
 
-- `firmware_core/LuatOS-SoC_V1113_EC618.soc` — the EC618 LuatOS core flashed alongside `src/`.
+- `firmware_core/LuatOS-SoC_V1113_EC618.soc` — the EC618 LuatOS core flashed alongside `platforms/EC618/` + `src/`. Target: Air780XX-class modems.
+- `firmware_core/V2024_Air780EP/LuatOS-SoC_V2024_Air780EP_1.soc` — the EC718 LuatOS core flashed alongside `platforms/EC718/` + `src/`. Target: YED G2111Y-E (Y100EP / Air780EP, EC718 silicon).
 - `tools/luatos_pc/V<version>/luatos-pc.exe` (+ `luat_uart_i686.dll`) — the PC simulator, one directory per version. Current: `V2031`. Older versions are kept (e.g. `unknown_oct2025/`) with a per-version `README.md` recording source, hashes, and date copied in.
 
 Source for both: Luatools_v3 → resource download (or the Skill API). When you pull a new version, commit it.
@@ -64,7 +65,7 @@ Two rules from those skills are worth honouring in Claude Code work:
 
 ## Architecture
 
-Two-layer layout: `platforms/<bsp>/main.lua` is the entry point selected at flash time; it sets BSP-specific globals/watchdog/APN, then `require("nemopi")` hands control to the platform-agnostic application in `src/`.
+Two-layer layout: `platforms/<bsp>/main.lua` is the entry point selected at flash time; it sets BSP-specific globals/watchdog/APN (including the `_G.HW` table read by `src/` for carrier-board knobs like the vbat ADC divider), then `require("nemopi")` hands control to the platform-agnostic application in `src/`. Supported platforms today: **EC618** (Hezhou Air780XX modems, original carrier), **EC718** (Air780EP / Y100EP on the YED G2111Y-E carrier), and **PC** (LuatOS-PC simulator — see "PC simulator" above).
 
 ### Boot sequence (`src/nemopi.lua`)
 

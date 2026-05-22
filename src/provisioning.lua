@@ -63,12 +63,19 @@ local function request_certificate(imei)
         json.encode({imei = imei})
     ).wait()
 
+    -- IMPORTANT: never log `body` from /certificate responses — even malformed
+    -- ones can carry the unencrypted private key. Log byte counts + parsed
+    -- structure hints instead.
+    local body_len = (type(body) == "string") and #body or -1
+
     if code == 200 then
         local parsed = json.decode(body or "")
         if type(parsed) ~= "table"
             or type(parsed.certificate) ~= "string"
             or type(parsed.privateKey) ~= "string" then
-            log.error("provisioning", "request_certificate", "malformed 200 body", body)
+            log.error("provisioning", "request_certificate",
+                "malformed 200 body (suppressed; may contain private key)",
+                "bytes", body_len)
             return nil
         end
         log.info("provisioning", "request_certificate", "ok", "expiry", parsed.expiry, "thumbprint", parsed.thumbprint)
@@ -80,7 +87,9 @@ local function request_certificate(imei)
         }
     end
 
-    -- Surface the upstream error message so failures are diagnosable from logs alone.
+    -- Non-200 bodies are server error messages (no key material), but for
+    -- defence in depth we still only surface the parsed `.error` field
+    -- rather than echoing the raw body.
     local err = "unknown"
     if body then
         local parsed = json.decode(body)
@@ -93,7 +102,7 @@ local function request_certificate(imei)
     elseif code == 400 then
         log.error("provisioning", "request_certificate", "rejected (400)", err)
     else
-        log.error("provisioning", "request_certificate", "http", code, "body", body)
+        log.error("provisioning", "request_certificate", "http", code, "error", err, "bytes", body_len)
     end
     return nil
 end

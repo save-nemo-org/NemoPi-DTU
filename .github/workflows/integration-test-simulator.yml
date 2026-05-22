@@ -26,6 +26,7 @@ on:
     paths:
       - 'src/**'
       - 'platforms/**'
+      - 'test/**'
       - 'tools/luatos_pc/**'
       - 'tools/provisioning_admin/**'
       - '.github/workflows/integration-test-simulator.yml'

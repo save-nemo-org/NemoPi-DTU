@@ -28,9 +28,11 @@ _G.http = require("fake_http")
 _G.fskv = require("fake_fskv")
 
 -- Polling code uses sys.wait; we want tests to finish instantly. Stub it
--- to a yield-only no-op so the cooperative scheduler still ticks.
+-- to a zero-timeout yield so the cooperative scheduler still ticks (in case
+-- code under test ever relies on other tasks making progress between waits)
+-- but no real time elapses.
 local real_sys_wait = sys.wait
-sys.wait = function() end
+sys.wait = function() real_sys_wait(0) end
 
 sys.taskInit(function()
     local tests = require("test_provisioning")

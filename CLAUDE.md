@@ -25,12 +25,12 @@ A local mirror lives at `agent/luatools_skill_api.md` (with a `Last checked:` st
 
 | Purpose | URL | Reachable from Claude? | Local mirror |
 |---|---|---|---|
-| LuatOS Lua API reference (per-module pages: `mqtt`, `socket`, `fskv`, `crypto`, `mobile`, `pm`, `uart`, etc.) | <https://wiki.luatos.com/api/> | **Yes** — `WebFetch` works; individual pages live at `wiki.luatos.com/api/<module>.html` | none needed |
+| LuatOS Lua API reference (per-module pages: `mqtt`, `socket`, `fskv`, `crypto`, `mobile`, `pm`, `uart`, etc.) | <https://wiki.luatos.org/api/> | **Yes** — `WebFetch` works; individual pages live at `wiki.luatos.org/api/<module>.html` | none needed |
 | Luatools Skill API (programmatic control of Luatools_v3) | <https://docs.openluat.com/protocols/ai/luatools/SKILL_API/> | **`Invoke-WebRequest` yes, `WebFetch`/`curl` 403** | `agent/luatools_skill_api.md` + `.html` |
 | LuatOS-PC simulator user guide | <https://docs.openluat.com/common/LuatOS-pc/> | **`Invoke-WebRequest` yes, `WebFetch`/`curl` 403** | `agent/luatos_pc_simulator_guide.md` + `.html` |
 | Chip selection guide (referenced by the Trae `query-route` skill) | <https://docs.openluat.com/SelectionGuide/SelectionGuide/> | Same as above (use `Invoke-WebRequest`) | not mirrored — selection happens once per product |
 
-**Primary lookup for any LuatOS API question is `wiki.luatos.com/api/<module>.html`.** It's reachable, fast, and authoritative — use it before guessing module signatures or falling back to memory.
+**Primary lookup for any LuatOS API question is `wiki.luatos.org/api/<module>.html`.** It's reachable, fast, and authoritative — use it before guessing module signatures or falling back to memory.
 
 **For `docs.openluat.com` pages**, `WebFetch` and `curl` get 403'd by the upstream SafeLine WAF, but PowerShell's `Invoke-WebRequest` (Windows alias `wget`) passes — the WAF fingerprints the client, not the IP. The mirror files document the exact PowerShell command in their `## How to refresh` block.
 
@@ -60,7 +60,7 @@ OpenLuat ships five `SKILL.md` files for **Trae** (a different programming agent
 Two rules from those skills are worth honouring in Claude Code work:
 
 - **Decoupled modules.** `platforms/<bsp>/main.lua` stays thin; feature logic belongs in modules under `src/`, and module-to-module communication goes through `sys.publish/subscribe` (already the pattern here — don't regress it).
-- **Don't guess LuatOS APIs.** Look the module up on <https://wiki.luatos.com/api/> first (it's reachable and authoritative). If that's down, fall back to the Trae MCP servers (if installed) or the cached skill API. If none of those work, stop and ask the developer — do not fall back to web search or training memory. Hallucinated module/function calls on a microcontroller can brick fielded devices.
+- **Don't guess LuatOS APIs.** Look the module up on <https://wiki.luatos.org/api/> first (it's reachable and authoritative). If that's down, fall back to the Trae MCP servers (if installed) or the cached skill API. If none of those work, stop and ask the developer — do not fall back to web search or training memory. Hallucinated module/function calls on a microcontroller can brick fielded devices.
 
 ## Architecture
 

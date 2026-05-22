@@ -27,12 +27,14 @@ log.setLevel(log.LOG_INFO)
 _G.http = require("fake_http")
 _G.fskv = require("fake_fskv")
 
--- Polling code uses sys.wait; we want tests to finish instantly. Stub it
--- to a zero-timeout yield so the cooperative scheduler still ticks (in case
--- code under test ever relies on other tasks making progress between waits)
--- but no real time elapses.
-local real_sys_wait = sys.wait
-sys.wait = function() real_sys_wait(0) end
+-- Polling code uses sys.wait; we want tests to finish instantly, so stub
+-- it to a complete no-op. The test runner is single-tasked (everything
+-- runs inside one sys.taskInit below) so there's nothing else that needs
+-- the cooperative scheduler to tick between waits. Note: we can't call
+-- sys.wait(0) as a "yield-only" wait — LuatOS docs say the timeout must
+-- be > 0 or the call is undefined.
+local real_sys_wait = sys.wait  -- restored before exit so log drain works
+sys.wait = function() end
 
 sys.taskInit(function()
     local tests = require("test_provisioning")

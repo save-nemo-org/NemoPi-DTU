@@ -228,6 +228,23 @@ end
         {host, port, client_id, username, password, cert, key}
     or nil on any unrecoverable failure (logged at source).
 ]]
+--[[
+    Drop the cached cert/key/endpoint so the next `get_credentials` call re-runs
+    the full /certificate + /onboard flow. Call this when downstream auth fails in
+    a way that points at stale credentials — e.g. the MQTT broker rejected our
+    client cert. Do not call on network-only failures; those will recover on
+    their own without burning the cert.
+]]
+function provisioning.invalidate()
+    fskv.del("cert_b64")
+    fskv.del("key_b64")
+    fskv.del("cert_expiry")
+    fskv.del("cert_thumbprint")
+    fskv.del("mqtt_host")
+    log.warn("provisioning", "invalidate", "cleared cached cert + endpoint")
+end
+
+
 function provisioning.get_credentials(imei, metadata)
     assert(type(imei) == "string" and #imei > 0, "imei must be non-empty string")
 

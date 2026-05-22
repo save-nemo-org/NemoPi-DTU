@@ -108,6 +108,21 @@ For a **clean-slate retest** (e.g. to verify the cert-issuance branch end-to-end
    devices). If you skip this, the device will fail-back into the cached-endpoints
    branch (`onboard.ts:418`) instead of exercising the queue path.
 
+## Public API
+
+- `provisioning.get_credentials(imei, metadata)` — main entry. Returns a struct
+  `{host, port, client_id, username, password, cert, key}` ready for `mqtt.create`,
+  or nil on any failure (logged at source). Reads/writes the fskv cache.
+- `provisioning.invalidate()` — drops every fskv key this module owns. Called by
+  `communication.lua` when MQTT connect times out after network setup succeeded
+  — that combination usually means the broker rejected our client cert (thumbprint
+  mismatch, expiry, revoked) rather than a network problem, so the next boot
+  re-runs the full /certificate + /onboard flow. Don't call this on plain network
+  failures; they recover without burning the cert.
+- `provisioning.cert_pem(b64)` / `provisioning.key_pem(b64)` — base64-to-PEM
+  wrappers. Public so tests can exercise them; production callers go through
+  `get_credentials`.
+
 ## Operational helpers
 
 - `tools/provisioning_admin/add_device.py` — upsert a row in the devices table with

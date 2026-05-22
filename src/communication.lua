@@ -113,7 +113,14 @@ function communication.init(device_id, sub_topics)
     log.info("communication", "mqtt connect")
     communication.mqtt_client:connect()
     if not sys.waitUntil("MQTT_CONNECTED", 60 * 1000) then
-        log.error("communication", "mqtt connect", "timeout")
+        -- We reached this point only after network_setup() succeeded and
+        -- provisioning returned credentials, so the broker host name is
+        -- known-good and the network is reachable. A connect timeout here
+        -- most likely means the broker rejected our cert (mismatch with the
+        -- thumbprint the server has on file, or expiry). Drop the cache so
+        -- the next boot re-runs the full provisioning flow.
+        log.error("communication", "mqtt connect", "timeout — invalidating cached credentials")
+        provisioning.invalidate()
         return false
     end
 

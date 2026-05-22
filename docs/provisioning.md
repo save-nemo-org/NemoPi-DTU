@@ -17,28 +17,31 @@ a small three-step protocol per boot.
 ## Boot-time flow
 
 ```
-                                                                                            cached?
 src/communication.lua: communication.init(imei, sub_topics)
   └─ network_setup()
-  └─ provisioning.get_credentials(imei, metadata)
-       ├─ get_or_issue_certificate(imei) ─────────────────────────────────────── fskv hit?
-       │   └─ POST /certificate           {imei}                                 200 → store
-       │      response: {certificate, privateKey, thumbprint, expiry}
+  │
+  ├─ Attempt 1: provisioning.load_cached_credentials(imei)   ← fskv only, no HTTP
+  │    ├─ cache complete (cert_b64 + key_b64 + mqtt_host)
+  │    │    → try MQTT → CONNACK → done ✓
+  │    └─ cache miss / MQTT timeout
+  │         → log + fall through to Attempt 2
+  │
+  └─ Attempt 2: provisioning.get_credentials(imei, metadata)
+       ├─ get_or_issue_certificate(imei) ─────────── fskv hit?
+       │   └─ POST /certificate {imei}               200 → store cert/key/expiry/thumbprint
+       │       response: {certificate, privateKey, thumbprint, expiry}
        │
-       ├─ resolve_mqtt_endpoint(imei, cert_b64, metadata) ─────────────────────  always called
-       │   ├─ POST /onboard               {deviceId, metadata}, X-Client-Cert
-       │   │   response: {id, status, result, error}
+       ├─ resolve_mqtt_endpoint(imei, cert_b64, metadata)   ← always runs
+       │   ├─ POST /onboard {deviceId, metadata}, X-Client-Cert
        │   │     · status="succeeded" → result.endpoints[0].hostname  ← short-circuit
        │   │     · status="pending"   → poll
        │   │     · status="failed"    → abort
-       │   │
        │   └─ poll: GET /onboard/{id}, X-Client-Cert, every 5s × max 12
        │       until status != "pending"
        │
        └─ returns {host, port, client_id, username, password, cert, key}
             (cert/key are PEM-wrapped from the base64 the server returned)
-
-  └─ mqtt.create(...) + connect + sys.waitUntil("MQTT_CONNECTED", 60s)
+       → try MQTT → CONNACK → done ✓, else return false (caller sleeps 30 min)
 ```
 
 ## fskv keys this module owns
@@ -49,7 +52,7 @@ src/communication.lua: communication.init(imei, sub_topics)
 | `key_b64`         | string | permanent | Device private key, base64. Wrapped with `provisioning.key_pem()`. |
 | `cert_expiry`     | string | permanent | ISO-8601 expiry from `/certificate`. Informational; no auto-renewal. |
 | `cert_thumbprint` | string | permanent | SHA-1 thumbprint returned by `/certificate`. Informational. |
-| `mqtt_host`       | string | per-boot  | Hostname from latest succeeded `/onboard`. Re-resolved each boot. |
+| `mqtt_host`       | string | persistent | Hostname from latest succeeded `/onboard`. Read by `load_cached_credentials` on warm boots; refreshed whenever `get_credentials` runs (i.e. when attempt 1 falls through). |
 
 `cert_b64` and `key_b64` are **one-shot per IMEI**: the server flips
 `allowCertificateIssuance` to `false` after the first 200 response (see

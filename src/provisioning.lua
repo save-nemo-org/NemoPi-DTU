@@ -23,7 +23,6 @@ local PROVISIONING_API = "https://provisioning.nemopi.com/api"
 local MQTT_PORT = 8883
 local ONBOARD_POLL_INTERVAL_MS = 5 * 1000
 local ONBOARD_POLL_MAX_ATTEMPTS = 12        -- 12 * 5s = 60s
-local HTTP_REQUEST_TIMEOUT_MS = 30 * 1000   -- soft cap; LuatOS http has its own internal timeout
 
 -- ============================================================
 -- PEM helpers

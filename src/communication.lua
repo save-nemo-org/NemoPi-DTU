@@ -130,8 +130,8 @@ end
     attempts until an admin resets the row.
 ]]
 function communication.init(device_id, sub_topics)
-    assert(type(device_id) == "string" and #device_id > 0, "device_id must be a string")
-    assert(type(sub_topics) == "table", "sub_topics is a list of strings")
+    assert(type(device_id) == "string" and #device_id > 0, "device_id must be a non-empty string")
+    assert(type(sub_topics) == "table", "sub_topics must be a list of strings")
 
     log.info("communication", "network_setup")
     if not network_setup() then

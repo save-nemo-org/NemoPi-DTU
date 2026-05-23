@@ -5,6 +5,7 @@ local utils = require("utils")
 local modbus = require("modbus")
 local power = require("power")
 local sensors = require("sensors")
+local gps = require("gps")
 local led = require("led")
 
 local imei = mobile.imei()
@@ -179,6 +180,7 @@ sys.taskInit(function()
 
     log.info("main", "setup")
     power.setup()
+    gps.setup()
     modbus.enable(UART_ID, RS485_EN_GPIO)
 
     sys.wait(2 * 1000)
@@ -221,7 +223,7 @@ sys.taskInit(function()
 
         do
             local vbat = power.internal.vbat()
-            local lat_lon = sensors.infrastructure.Gps:read()
+            local lat_lon = gps.location()
             local cell = utils.cell_info()
 
             local total, used, max = rtos.meminfo("lua")

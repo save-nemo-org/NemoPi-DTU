@@ -11,10 +11,16 @@ log.setLevel(log.LOG_INFO)
 assert(rtos.bsp() == "EC618", "EC618 Firmware only")
 
 -- Hardware-specific knobs read by chip-agnostic code in src/.
--- Carrier here is the existing EC618 board: vbat = adc * 3300 / 103300.
+-- Carrier: YED-D780L1-Y on Air780XX (EC618). Direct sensor-supply GPIO
+-- on GPIO24, vbat divider 3300/103300, GPS optional via modbus (slave
+-- 0x01) when one is attached.
 _G.HW = {
     vbat_scale_num = 3300,
     vbat_scale_den = 103300,
+    sensor_supply = { kind = "direct", gpio = 24 },
+    -- gps left as "none" by default; flip to "modbus" with the attached-GPS
+    -- slave id when a unit actually has one wired up.
+    gps = { kind = "none" },
 }
 
 -- Disable power key debouncing

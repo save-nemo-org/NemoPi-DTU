@@ -23,11 +23,17 @@ assert(_bsp == "EC718P" or _bsp == "EC718" or _bsp == "Air780EP",
     "EC718-family firmware only, got: " .. tostring(_bsp))
 
 -- Hardware-specific knobs read by chip-agnostic code in src/.
--- G2111Y-E supply-voltage divider per manual: vbat = adc * 273300 / 3300
--- (~82.8x, designed for inputs up to 90 V).
+-- G2111Y-E specifics:
+--   vbat divider 273300/3300 (~82.8x, designed for inputs up to 90 V)
+--   sensor supply is NPN on GPIO24 — drives nothing useful yet, so noop
+--     until a relay (NPN- or modbus-driven) is wired in
+--   GPS is the on-board chip on UART2, powered via GPIO21 (per
+--     银尔达Air780系列产品二次开发手册.pdf §45)
 _G.HW = {
     vbat_scale_num = 273300,
     vbat_scale_den = 3300,
+    sensor_supply = { kind = "noop" },
+    gps = { kind = "on_board", uart_id = 2, power_gpio = 21 },
 }
 
 -- Air780EP carrier doesn't expose the chip's PWK debouncing knob the same

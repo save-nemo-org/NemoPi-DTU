@@ -8,7 +8,7 @@ install.
 |---|---|---|
 | `LuatOS-SoC_V2024_Air780EP_1.soc` | 4,202,761 B | `c764a814a8427251c1a1e9363a03347991898083df292f56e0b1138919aaaf5d` |
 
-Used together with `platforms/EC718/` to target the YED G2111Y-E carrier
+Used together with `platforms/G2111YE/` to target the YED G2111Y-E carrier
 board (Y100EP / Air780EP modem, EC718 silicon). To flash, see the
 "Run / build / flash" section in `CLAUDE.md`.
 

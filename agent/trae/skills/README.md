@@ -65,7 +65,7 @@ running:
 
 Worth being explicit, so future you doesn't "fix" working code:
 
-- **`platforms/EC618/main.lua` keeps the watchdog enabled** (`wdt.init(9000)` +
+- **`platforms/D780L1Y/main.lua` keeps the watchdog enabled** (`wdt.init(9000)` +
   `sys.timerLoopStart(wdt.feed, 3000)`) even though our AIR780XX is in the
   Air700/780/8000 family that the template tells you to strip the wdt block from. The
   9 s timeout is load-bearing for our deployment — see the gotchas section of

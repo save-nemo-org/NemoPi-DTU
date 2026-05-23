@@ -10,7 +10,7 @@ LuatOS-based firmware for a NemoPi Data Transfer Unit (DTU) built on the Hezhou 
 
 There is no test suite, linter, or compile step — Lua is loaded directly by LuatOS at boot.
 
-- **Flash to device (EC618):** use [Luatools_v3](https://luatos.com/luatools/download/last) (GUI, Windows-only). Point it at the `.soc` in `firmware_core/` plus `platforms/EC618/` and `src/`. Luatools picks up `PROJECT`/`VERSION` from `platforms/EC618/main.lua`. The Microsoft USB-CDC driver used by AIR780 in bootloader mode only works reliably on native Windows 10/11 — flashing from a VM fails.
+- **Flash to device:** use [Luatools_v3](https://luatos.com/luatools/download/last) (GUI, Windows-only). Pick the matching firmware `.soc` from `firmware_core/` plus the matching `platforms/<board>/` directory + `src/`. Luatools picks up `PROJECT`/`VERSION` from the platform's `main.lua`. The Microsoft USB-CDC driver used by AIR780 in bootloader mode only works reliably on native Windows 10/11 — flashing from a VM fails.
 - **PC simulator IMEI:** the stub `mobile.imei()` returns `"000000"` by default, which the provisioning service rejects. To exercise the real onboarding flow, set `$env:NEMOPI_TEST_IMEI = "<imei>"` (PowerShell) before launching — see `platforms/PC/mobile.lua`. The IMEI must be pre-loaded in the Azure devices table with `allowCertificateIssuance=true` and `allowProvisioning=true`.
 - **PC simulator:** invoke the `simulate` skill (`.claude/skills/simulate/SKILL.md`) — it handles version verification against the developer's Luatools install, upgrade-and-archive of older binaries, log tailing, and clean shutdown. The raw command is `.\tools\luatos_pc\V2031\luatos-pc.exe .\platforms\PC\ .\src\`. The simulator runs the same `src/` code with stub `mobile`, `sms`, `libfota` modules from `platforms/PC/`. Real OS networking is used for `socket`, `http`, `mqtt`, `crypto`; `fskv` is backed by a `fskv.bin` file in the cwd; logs are written to `pclogs/luatos_pc_<timestamp>.log`. What doesn't work: cellular APIs (`mobile.imei()` returns `"000000"`; `mobile.reqCellInfo()` immediately fires `CELL_INFO_UPDATE` and `mobile.getCellInfo()` returns `{}`), SMS, OTA via `libfota`, `uart`/`gpio`/`adc` hardware. **Simulate first** — see "Simulation-first workflow" below.
 - **OTA test server:** `.venv\Scripts\python.exe tools\ota_server\server.py` serves the current directory on port 8000 so the device can pull a `.bin` (Luatools-generated) via the `ota` command or `OTA <url>` SMS. (See "Python tooling" below — even stdlib-only helpers run via the venv for invocation consistency.)
@@ -40,8 +40,8 @@ A local mirror lives at `agent/luatools_skill_api.md` (with a `Last checked:` st
 
 **Always copy the simulator exe and the firmware `.soc` into this repo before development**, so a checkout uniquely identifies the binary that was used. The repo already pins:
 
-- `firmware_core/LuatOS-SoC_V1113_EC618.soc` — the EC618 LuatOS core flashed alongside `platforms/EC618/` + `src/`. Target: Air780XX-class modems.
-- `firmware_core/V2024_Air780EP/LuatOS-SoC_V2024_Air780EP_1.soc` — the EC718 LuatOS core flashed alongside `platforms/EC718/` + `src/`. Target: YED G2111Y-E (Y100EP / Air780EP, EC718 silicon).
+- `firmware_core/LuatOS-SoC_V1113_EC618.soc` — the EC618 LuatOS core flashed alongside `platforms/D780L1Y/` + `src/` (or `platforms/GNSS2/` once that platform lands). Target: any Air780XX / Air780EG board.
+- `firmware_core/V2024_Air780EP/LuatOS-SoC_V2024_Air780EP_1.soc` — the EC718 LuatOS core flashed alongside `platforms/G2111YE/` + `src/`. Target: YED G2111Y-E (Y100EP / Air780EP, EC718 silicon).
 - `tools/luatos_pc/V<version>/luatos-pc.exe` (+ `luat_uart_i686.dll`) — the PC simulator, one directory per version. Current: `V2031`. Older versions are kept (e.g. `unknown_oct2025/`) with a per-version `README.md` recording source, hashes, and date copied in.
 
 Source for both: Luatools_v3 → resource download (or the Skill API). When you pull a new version, commit it.
@@ -95,8 +95,8 @@ Topic conventions and JSON schemas are authoritative in `README.md` — when cha
 
 - **LuatOS concurrency**: cooperative — every long operation is a `sys.taskInit(...)` and yields via `sys.wait(ms)` or `sys.waitUntil("EVENT", timeout)`. `sys.publish/subscribe` is the cross-task event bus.
 - **Globals**: `log`, `rtos`, `mqtt`, `pwm`, `mobile`, `fskv`, `crypto`, `sms`, `json`, `socket`, `pack`, `pm`, `http` are LuatOS C-side globals (declared in `.vscode/settings.json` for the Lua language server). `sys`/`sysplus` are exported by each platform's `main.lua`. The PC simulator stubs `mobile`, `sms`, and `libfota` only — `mqtt`, `socket`, `http`, `crypto`, `fskv` work over real OS networking / disk.
-- **Watchdog**: 9 s timeout, fed every 3 s by a timer in `platforms/EC618/main.lua`. Any blocking call longer than ~6 s without yielding will reset the device.
-- **Forced 24 h reboot**: `platforms/EC618/main.lua` starts a `rtos.reboot` timer at boot. Long-lived state must survive a daily restart.
+- **Watchdog**: 9 s timeout, fed every 3 s by a timer in `platforms/D780L1Y/main.lua`. Any blocking call longer than ~6 s without yielding will reset the device.
+- **Forced 24 h reboot**: `platforms/D780L1Y/main.lua` starts a `rtos.reboot` timer at boot. Long-lived state must survive a daily restart.
 - **APN is hardcoded** to `hologram` (`mobile.apn(0, 1, "hologram", "", "", nil, 0)`).
 - **Sensitive data**: MQTT certs land in fskv only (never in source). The `certs/` and `ota/` directories are gitignored — don't commit binaries or credentials into them.
 - **Commit messages**: when the diff is Claude-generated (or substantially so), prefix the commit message with `claude:` — e.g. `claude: create simulator use skill`. Keeps it obvious in `git log` who wrote the change and makes Claude-authored commits easy to filter.

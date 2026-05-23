@@ -13,8 +13,14 @@ _G.sysplus = require("sysplus")
 
 log.setLevel(log.LOG_INFO)
 
--- Validate BSP
-assert(rtos.bsp() == "EC718", "EC718 Firmware only")
+-- Validate BSP. Confirmed value on V2024 Air780EP firmware: "EC718P".
+-- Tolerance kept for plausible alternate labels (different LuatOS BSP
+-- versions have been known to shift these strings); the log line below
+-- gives ground truth on each boot so any future drift is obvious.
+local _bsp = rtos.bsp()
+log.info("ec718-platform", "rtos.bsp", _bsp)
+assert(_bsp == "EC718P" or _bsp == "EC718" or _bsp == "Air780EP",
+    "EC718-family firmware only, got: " .. tostring(_bsp))
 
 -- Hardware-specific knobs read by chip-agnostic code in src/.
 -- G2111Y-E supply-voltage divider per manual: vbat = adc * 273300 / 3300

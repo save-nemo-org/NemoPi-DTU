@@ -10,14 +10,22 @@ local fskv_migrate = {}
     them) but it wastes space and risks confusion if a future migration
     needs the slot for something else.
 
-    This module keeps a `_kv_schema` key in fskv and runs ordered
+    This module keeps a `database_version` key in fskv and runs ordered
     migrations on every boot. Each migration runs at most once per device
     (gated by the stored version). The migration list is append-only.
 
     Add a new entry to `migrations` (with `to` = the next integer) when
     keys are renamed or removed; never edit a previously-shipped one.
+
+    Back-compat: this module previously stored the version under the key
+    `_kv_schema`. Devices flashed during that window are read with the
+    old name on first boot of the new code, then promoted to the new key
+    (and the legacy `_kv_schema` is deleted) so we end up with a single
+    source of truth.
 ]]
 
+local DB_VERSION_KEY = "database_version"
+local LEGACY_VERSION_KEY = "_kv_schema"
 local CURRENT_VERSION = 2
 
 local migrations = {
@@ -33,23 +41,39 @@ local migrations = {
     },
 }
 
+local function read_current_version()
+    local v = fskv.get(DB_VERSION_KEY)
+    if type(v) == "number" then return v end
+    -- One-shot back-compat: if the prior name carries a valid version,
+    -- treat it as authoritative. We'll write it under the new name (and
+    -- drop the legacy key) below so this branch is never taken twice.
+    local legacy = fskv.get(LEGACY_VERSION_KEY)
+    if type(legacy) == "number" then return legacy end
+    return 1
+end
+
 function fskv_migrate.run()
-    local stored = fskv.get("_kv_schema")
-    local version = (type(stored) == "number") and stored or 1
+    local version = read_current_version()
 
     if version >= CURRENT_VERSION then
-        log.info("fskv_migrate", "schema up to date", "version", version)
-        return
+        log.info("fskv_migrate", "schema up to date", DB_VERSION_KEY, version)
+    else
+        log.info("fskv_migrate", "upgrading schema", "from", version, "to", CURRENT_VERSION)
+        for _, m in ipairs(migrations) do
+            if m.to > version then
+                log.info("fskv_migrate", "running migration", "to_version", m.to, "description", m.description)
+                m.run()
+                version = m.to
+            end
+        end
     end
 
-    log.info("fskv_migrate", "upgrading schema", "from", version, "to", CURRENT_VERSION)
-    for _, m in ipairs(migrations) do
-        if m.to > version then
-            log.info("fskv_migrate", "running migration", "to_version", m.to, "description", m.description)
-            m.run()
-            fskv.set("_kv_schema", m.to)
-            version = m.to
-        end
+    -- Always (re)write the new key so subsequent boots short-circuit, and
+    -- drop the legacy key if it's still there. Idempotent.
+    fskv.set(DB_VERSION_KEY, version)
+    if fskv.get(LEGACY_VERSION_KEY) ~= nil then
+        fskv.del(LEGACY_VERSION_KEY)
+        log.info("fskv_migrate", "removed legacy", LEGACY_VERSION_KEY, "key (migrated to", DB_VERSION_KEY, ")")
     end
 end
 

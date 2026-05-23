@@ -29,6 +29,7 @@ A local mirror lives at `agent/luatools_skill_api.md` (with a `Last checked:` st
 | Luatools Skill API (programmatic control of Luatools_v3) | <https://docs.openluat.com/protocols/ai/luatools/SKILL_API/> | **`Invoke-WebRequest` yes, `WebFetch`/`curl` 403** | `agent/luatools_skill_api.md` + `.html` |
 | LuatOS-PC simulator user guide | <https://docs.openluat.com/common/LuatOS-pc/> | **`Invoke-WebRequest` yes, `WebFetch`/`curl` 403** | `agent/luatos_pc_simulator_guide.md` + `.html` |
 | Chip selection guide (referenced by the Trae `query-route` skill) | <https://docs.openluat.com/SelectionGuide/SelectionGuide/> | Same as above (use `Invoke-WebRequest`) | not mirrored — selection happens once per product |
+| LuatOS default lib source (`libfota`, `libnet`, `air153C_wtd`, `lbsLoc`, `ex*` extension modules, etc.) | n/a — local files | n/a | `<Luatools-install>/resource/soc_script/v<version>/lib/*.lua` (e.g. `C:\Users\han\Code\luatools2\resource\soc_script\v2026.05.20.10\lib\`). Read it when you need the API of a lib module; **do not vendor a copy into this repo** — Luatools' Skill API is too fragile around custom `lib` paths and the in-repo copy will silently diverge from what actually gets flashed. |
 
 **Primary lookup for any LuatOS API question is `wiki.luatos.org/api/<module>.html`.** It's reachable, fast, and authoritative — use it before guessing module signatures or falling back to memory.
 

@@ -10,7 +10,8 @@ LuatOS-based firmware for a NemoPi Data Transfer Unit (DTU) built on the Hezhou 
 
 There is no test suite, linter, or compile step — Lua is loaded directly by LuatOS at boot.
 
-- **Flash to device (EC618):** use [Luatools_v3](https://luatos.com/luatools/download/last) (GUI, Windows-only). Point it at the `.soc` in `firmware_core/` plus `platforms/EC618/` and `src/`. Luatools picks up `PROJECT`/`VERSION` from `platforms/EC618/main.lua`. The Microsoft USB-CDC driver used by AIR780 in bootloader mode only works reliably on native Windows 10/11 — flashing from a VM fails.
+- **Flash to device:** use [Luatools_v3](https://luatos.com/luatools/download/last) (GUI, Windows-only). Pick the matching firmware `.soc` from `firmware_core/` plus the matching `platforms/<board>/` directory + `src/`. Luatools picks up `PROJECT`/`VERSION` from the platform's `main.lua`. The Microsoft USB-CDC driver used by AIR780 in bootloader mode only works reliably on native Windows 10/11 — flashing from a VM fails.
+- **PC simulator IMEI:** the stub `mobile.imei()` returns `"000000"` by default, which the provisioning service rejects. To exercise the real onboarding flow, set `$env:NEMOPI_TEST_IMEI = "<imei>"` (PowerShell) before launching — see `platforms/PC/mobile.lua`. The IMEI must be pre-loaded in the Azure devices table with `allowCertificateIssuance=true` and `allowProvisioning=true`.
 - **PC simulator:** invoke the `simulate` skill (`.claude/skills/simulate/SKILL.md`) — it handles version verification against the developer's Luatools install, upgrade-and-archive of older binaries, log tailing, and clean shutdown. The raw command is `.\tools\luatos_pc\V2031\luatos-pc.exe .\platforms\PC\ .\src\`. The simulator runs the same `src/` code with stub `mobile`, `sms`, `libfota` modules from `platforms/PC/`. Real OS networking is used for `socket`, `http`, `mqtt`, `crypto`; `fskv` is backed by a `fskv.bin` file in the cwd; logs are written to `pclogs/luatos_pc_<timestamp>.log`. What doesn't work: cellular APIs (`mobile.imei()` returns `"000000"`; `mobile.reqCellInfo()` immediately fires `CELL_INFO_UPDATE` and `mobile.getCellInfo()` returns `{}`), SMS, OTA via `libfota`, `uart`/`gpio`/`adc` hardware. **Simulate first** — see "Simulation-first workflow" below.
 - **OTA test server:** `.venv\Scripts\python.exe tools\ota_server\server.py` serves the current directory on port 8000 so the device can pull a `.bin` (Luatools-generated) via the `ota` command or `OTA <url>` SMS. (See "Python tooling" below — even stdlib-only helpers run via the venv for invocation consistency.)
 
@@ -24,12 +25,13 @@ A local mirror lives at `agent/luatools_skill_api.md` (with a `Last checked:` st
 
 | Purpose | URL | Reachable from Claude? | Local mirror |
 |---|---|---|---|
-| LuatOS Lua API reference (per-module pages: `mqtt`, `socket`, `fskv`, `crypto`, `mobile`, `pm`, `uart`, etc.) | <https://wiki.luatos.com/api/> | **Yes** — `WebFetch` works; individual pages live at `wiki.luatos.com/api/<module>.html` | none needed |
+| LuatOS Lua API reference (per-module pages: `mqtt`, `socket`, `fskv`, `crypto`, `mobile`, `pm`, `uart`, etc.) | <https://wiki.luatos.org/api/> | **Yes** — `WebFetch` works; individual pages live at `wiki.luatos.org/api/<module>.html` | none needed |
 | Luatools Skill API (programmatic control of Luatools_v3) | <https://docs.openluat.com/protocols/ai/luatools/SKILL_API/> | **`Invoke-WebRequest` yes, `WebFetch`/`curl` 403** | `agent/luatools_skill_api.md` + `.html` |
 | LuatOS-PC simulator user guide | <https://docs.openluat.com/common/LuatOS-pc/> | **`Invoke-WebRequest` yes, `WebFetch`/`curl` 403** | `agent/luatos_pc_simulator_guide.md` + `.html` |
 | Chip selection guide (referenced by the Trae `query-route` skill) | <https://docs.openluat.com/SelectionGuide/SelectionGuide/> | Same as above (use `Invoke-WebRequest`) | not mirrored — selection happens once per product |
+| LuatOS default lib source (`libfota`, `libnet`, `air153C_wtd`, `lbsLoc`, `ex*` extension modules, etc.) | n/a — local files | n/a | `<Luatools-install>/resource/soc_script/v<version>/lib/*.lua` (e.g. `C:\Users\han\Code\luatools2\resource\soc_script\v2026.05.20.10\lib\`). Read it when you need the API of a lib module; **do not vendor a copy into this repo** — Luatools' Skill API is too fragile around custom `lib` paths and the in-repo copy will silently diverge from what actually gets flashed. |
 
-**Primary lookup for any LuatOS API question is `wiki.luatos.com/api/<module>.html`.** It's reachable, fast, and authoritative — use it before guessing module signatures or falling back to memory.
+**Primary lookup for any LuatOS API question is `wiki.luatos.org/api/<module>.html`.** It's reachable, fast, and authoritative — use it before guessing module signatures or falling back to memory.
 
 **For `docs.openluat.com` pages**, `WebFetch` and `curl` get 403'd by the upstream SafeLine WAF, but PowerShell's `Invoke-WebRequest` (Windows alias `wget`) passes — the WAF fingerprints the client, not the IP. The mirror files document the exact PowerShell command in their `## How to refresh` block.
 
@@ -39,7 +41,8 @@ A local mirror lives at `agent/luatools_skill_api.md` (with a `Last checked:` st
 
 **Always copy the simulator exe and the firmware `.soc` into this repo before development**, so a checkout uniquely identifies the binary that was used. The repo already pins:
 
-- `firmware_core/LuatOS-SoC_V1113_EC618.soc` — the EC618 LuatOS core flashed alongside `src/`.
+- `firmware_core/LuatOS-SoC_V1113_EC618.soc` — the EC618 LuatOS core flashed alongside `platforms/D780L1Y/` + `src/` (or `platforms/GNSS2/` once that platform lands). Target: any Air780XX / Air780EG board.
+- `firmware_core/V2024_Air780EP/LuatOS-SoC_V2024_Air780EP_1.soc` — the EC718 LuatOS core flashed alongside `platforms/G2111YE/` + `src/`. Target: YED G2111Y-E (Y100EP / Air780EP, EC718 silicon).
 - `tools/luatos_pc/V<version>/luatos-pc.exe` (+ `luat_uart_i686.dll`) — the PC simulator, one directory per version. Current: `V2031`. Older versions are kept (e.g. `unknown_oct2025/`) with a per-version `README.md` recording source, hashes, and date copied in.
 
 Source for both: Luatools_v3 → resource download (or the Skill API). When you pull a new version, commit it.
@@ -59,11 +62,11 @@ OpenLuat ships five `SKILL.md` files for **Trae** (a different programming agent
 Two rules from those skills are worth honouring in Claude Code work:
 
 - **Decoupled modules.** `platforms/<bsp>/main.lua` stays thin; feature logic belongs in modules under `src/`, and module-to-module communication goes through `sys.publish/subscribe` (already the pattern here — don't regress it).
-- **Don't guess LuatOS APIs.** Look the module up on <https://wiki.luatos.com/api/> first (it's reachable and authoritative). If that's down, fall back to the Trae MCP servers (if installed) or the cached skill API. If none of those work, stop and ask the developer — do not fall back to web search or training memory. Hallucinated module/function calls on a microcontroller can brick fielded devices.
+- **Don't guess LuatOS APIs.** Look the module up on <https://wiki.luatos.org/api/> first (it's reachable and authoritative). If that's down, fall back to the Trae MCP servers (if installed) or the cached skill API. If none of those work, stop and ask the developer — do not fall back to web search or training memory. Hallucinated module/function calls on a microcontroller can brick fielded devices.
 
 ## Architecture
 
-Two-layer layout: `platforms/<bsp>/main.lua` is the entry point selected at flash time; it sets BSP-specific globals/watchdog/APN, then `require("nemopi")` hands control to the platform-agnostic application in `src/`.
+Two-layer layout: `platforms/<bsp>/main.lua` is the entry point selected at flash time; it sets BSP-specific globals/watchdog/APN (including the `_G.HW` table read by `src/` for carrier-board knobs like the vbat ADC divider), then `require("nemopi")` hands control to the platform-agnostic application in `src/`. Supported platforms today: **EC618** (Hezhou Air780XX modems, original carrier), **EC718** (Air780EP / Y100EP on the YED G2111Y-E carrier), and **PC** (LuatOS-PC simulator — see "PC simulator" above).
 
 ### Boot sequence (`src/nemopi.lua`)
 
@@ -76,7 +79,8 @@ Two-layer layout: `platforms/<bsp>/main.lua` is the entry point selected at flas
 
 ### Module responsibilities
 
-- **`src/communication.lua`** — single-instance MQTT wrapper. Credentials are fetched from `https://issuer.nemopi.com/api/certificate` (POST with `{"imei": ...}`) and cached in fskv under `"credentials"`. MQTT broker host is hardcoded (`nemopi-mqtt-sandbox.southeastasia-1.ts.eventgrid.azure.net:8883`); the HTTPS response only supplies the client cert/key. Inbound MQTT is republished on the `MQTT_RECV` topic for the rest of the system.
+- **`src/communication.lua`** — single-instance MQTT wrapper. Owns network/NTP setup and the MQTT client; delegates credential acquisition to `src/provisioning.lua`. Inbound MQTT is republished on the `MQTT_RECV` topic for the rest of the system.
+- **`src/provisioning.lua`** — Zero-Touch Provisioning client for the device-provisioning service at `https://provisioning.nemopi.com/api/`. Three-step flow (`/certificate` → `/onboard` → poll `/onboard/{id}`) yields cert + dynamic MQTT broker hostname. **Full module documentation at [docs/provisioning.md](docs/provisioning.md)** — boot flow, fskv keys, encoding contract, failure modes, reset procedure.
 - **`src/modbus.lua`** — Modbus-RTU master over a single UART (1 by default), with hardware RS485 EN on GPIO 25. Supports function codes 0x03/0x04. `read_register` sleeps `sys.wait(1000)` for the slave to respond — there is no smarter framing, so sensor reads are inherently 1 s+ apart.
 - **`src/sensors.lua`** — sensor registry. Each entry under `sensors.sensor_classes` is a class with `:detect() → bool, instance`, `:info()`, `:run() → data[]`. `sensors.infrastructure.Gps` is separate from the detection loop because GPS is read inline from the diagnosis block. Currently shipping: `Ds18b20Logger` (Modbus slave 0x02). Sensor payload schemas are defined by the JSON tables built here and consumed by the cloud — keep field names (`channel`, `value`, `fault`) stable.
 - **`src/power.lua`** — two switchable rails: `internal` (VPCB, GPIO 22) powers the RS485 transceiver and ADC; `external` (VOUT, GPIO 24) powers the attached sensors. The main loop toggles both off between read cycles to save power.
@@ -92,8 +96,8 @@ Topic conventions and JSON schemas are authoritative in `README.md` — when cha
 
 - **LuatOS concurrency**: cooperative — every long operation is a `sys.taskInit(...)` and yields via `sys.wait(ms)` or `sys.waitUntil("EVENT", timeout)`. `sys.publish/subscribe` is the cross-task event bus.
 - **Globals**: `log`, `rtos`, `mqtt`, `pwm`, `mobile`, `fskv`, `crypto`, `sms`, `json`, `socket`, `pack`, `pm`, `http` are LuatOS C-side globals (declared in `.vscode/settings.json` for the Lua language server). `sys`/`sysplus` are exported by each platform's `main.lua`. The PC simulator stubs `mobile`, `sms`, and `libfota` only — `mqtt`, `socket`, `http`, `crypto`, `fskv` work over real OS networking / disk.
-- **Watchdog**: 9 s timeout, fed every 3 s by a timer in `platforms/EC618/main.lua`. Any blocking call longer than ~6 s without yielding will reset the device.
-- **Forced 24 h reboot**: `platforms/EC618/main.lua` starts a `rtos.reboot` timer at boot. Long-lived state must survive a daily restart.
+- **Watchdog**: 9 s timeout, fed every 3 s by a timer in `platforms/D780L1Y/main.lua`. Any blocking call longer than ~6 s without yielding will reset the device.
+- **Forced 24 h reboot**: `platforms/D780L1Y/main.lua` starts a `rtos.reboot` timer at boot. Long-lived state must survive a daily restart.
 - **APN is hardcoded** to `hologram` (`mobile.apn(0, 1, "hologram", "", "", nil, 0)`).
 - **Sensitive data**: MQTT certs land in fskv only (never in source). The `certs/` and `ota/` directories are gitignored — don't commit binaries or credentials into them.
 - **Commit messages**: when the diff is Claude-generated (or substantially so), prefix the commit message with `claude:` — e.g. `claude: create simulator use skill`. Keeps it obvious in `git log` who wrote the change and makes Claude-authored commits easy to filter.
@@ -117,5 +121,28 @@ Current Python helpers:
 - `tools/ota_server/server.py` — stdlib only; serves the current directory on :8000 for OTA testing.
 - `tools/geolocation/location.py` — needs `requests`; stub for cell-tower geolocation via Google.
 - `tools/mkdocs_to_markdown.py` — needs `markdownify`, `beautifulsoup4`; extracts a readable markdown view from a saved mkdocs-material HTML page. Used to refresh `agent/luatools_skill_api.md` and `agent/luatos_pc_simulator_guide.md` after re-downloading their `.html` siblings.
+- `tools/provisioning_admin/add_device.py` — needs `azure-data-tables` and `azure-identity`; upserts a device row in the provisioning service's Azure Table Storage so a given IMEI is eligible for `/certificate` and `/onboard`. Auth via `EnvironmentCredential` only — set `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET` for the provisioning service principal (which needs `Storage Table Data Contributor` on the storage account, granted by an Azure admin once). No `az login` fallback — missing env vars fail loud rather than silently using whoever's signed in. See `docs/provisioning.md` for context.
+- `tools/luatools/flash.py` — stdlib-only; one-command end-to-end flash via the Luatools_v3 Skill API. Delete project ini → create → enable default_lib → add each `src/*.lua` → syntax_check → flash → wait for `Burn OK!` in tools log → wait for `I/user.main setup` in fresh trace. Defaults target G2111Y-E; `--project-name`/`--firmware`/`--platform`/`--src`/`--mode` override. Requires Luatools_v3 ≥ 3.2.8 running with Skill API on `127.0.0.1:38380`. See the docstring for the full reasoning behind each step (Skill API has several sharp edges; the script codifies the working procedure).
 
 When you add a new Python helper that needs third-party libs, install them into `.venv` and add a one-line note here so future sessions know what to `pip install`.
+
+## Testing
+
+Unit tests for `src/provisioning.lua` live in `test/`. They run in the PC simulator's Lua runtime with in-memory fakes for `http` and `fskv` (no network, no real flash), so the suite finishes in well under a second.
+
+Run locally:
+
+```powershell
+.\tools\luatos_pc\V2031\luatos-pc.exe .\test\ .\src\
+```
+
+Exit code 0 = all pass; non-zero = any failure. Test source: `test/test_provisioning.lua`; runner: `test/main.lua`; fakes: `test/fake_http.lua`, `test/fake_fskv.lua`; assertion helpers: `test/assertions.lua`.
+
+## CI
+
+`.github/workflows/integration-test-simulator.yml` has two jobs:
+
+1. **`unit-tests`** — runs the `test/` suite via the PC simulator. No Azure secrets, no network. ~30 s including LFS checkout. Gates the integration test below.
+2. **`simulate`** — runs the PC simulator end-to-end against the production provisioning service. Resets the CI-owned IMEI `ci-pipeline` via `add_device.py --reset` (auto-creates the row on first run), launches the simulator, and watches the log for either `I/user.main setup` (success — provisioning completed and MQTT connected) or the failure markers. Concurrency is serialised (single global lock) because `ci-pipeline` is shared across CI runs. Don't reuse `ci-pipeline` for local testing.
+
+Requires three repo secrets — `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` — for the service principal the workflow authenticates as.

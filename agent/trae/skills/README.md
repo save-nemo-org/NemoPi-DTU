@@ -23,8 +23,8 @@ Trae has these wired up; **Claude Code does not** unless someone installs them:
 - `mcp_luatos-code` — `search_code`, `list_demos`, `list_libs`, `server_stats`. Canonical demo / example index.
 
 If you want the same level of API verification in Claude Code, install those MCP
-servers. Otherwise the primary lookup is <https://wiki.luatos.com/api/> (per-module
-pages at `wiki.luatos.com/api/<module>.html` — reachable from `WebFetch`); secondary
+servers. Otherwise the primary lookup is <https://wiki.luatos.org/api/> (per-module
+pages at `wiki.luatos.org/api/<module>.html` — reachable from `WebFetch`); secondary
 sources are <https://docs.openluat.com/> (often WAF-blocked from automated fetchers)
 and <https://gitee.com/openLuat/LuatOS/tree/master/module>.
 
@@ -65,7 +65,7 @@ running:
 
 Worth being explicit, so future you doesn't "fix" working code:
 
-- **`platforms/EC618/main.lua` keeps the watchdog enabled** (`wdt.init(9000)` +
+- **`platforms/D780L1Y/main.lua` keeps the watchdog enabled** (`wdt.init(9000)` +
   `sys.timerLoopStart(wdt.feed, 3000)`) even though our AIR780XX is in the
   Air700/780/8000 family that the template tells you to strip the wdt block from. The
   9 s timeout is load-bearing for our deployment — see the gotchas section of

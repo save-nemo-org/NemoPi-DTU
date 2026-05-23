@@ -1,0 +1,166 @@
+# Integration test: run the PC simulator end-to-end against the production
+# device-provisioning service.
+#
+# Verifies the full ZTP flow on every push/PR: cert issuance, onboarding,
+# MQTT broker assignment, and a clean entry into the main loop.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   AZURE_TENANT_ID      ┐  service principal credentials for the workflow.
+#   AZURE_CLIENT_ID      ├  the principal needs `Storage Table Data Contributor`
+#   AZURE_CLIENT_SECRET  ┘  on the nemopideviceonboarding storage account.
+#
+# The test IMEI (`ci-pipeline`) is CI-owned: don't reuse it for local manual
+# testing, and don't point local runs at production IMEIs that the pipeline
+# might reset. The row is auto-created by `add_device.py --reset` on the
+# first run, so no manual pre-seeding of the devices table is required.
+# Runs are serialised by the `concurrency` block since the IMEI is shared
+# across all CI invocations — only one job at a time across the whole repo.
+
+name: integration-test-simulator
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'platforms/**'
+      - 'test/**'
+      - 'tools/luatos_pc/**'
+      - 'tools/provisioning_admin/**'
+      - '.github/workflows/integration-test-simulator.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: integration-test-simulator
+  cancel-in-progress: false
+
+jobs:
+  unit-tests:
+    runs-on: windows-latest
+    timeout-minutes: 3
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout (with LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Run unit tests via PC simulator
+        # Uses the same pinned simulator the integration test uses, just
+        # with the test/ directory as the entry point. Fakes for http +
+        # fskv mean this is pure-Lua and needs no Azure secrets.
+        run: |
+          $exe = '.\tools\luatos_pc\V2031\luatos-pc.exe'
+          if (-not (Test-Path $exe)) { throw "$exe missing — was LFS pulled?" }
+          & $exe ".\test\" ".\src\"
+          if ($LASTEXITCODE -ne 0) { throw "Unit tests failed: exit $LASTEXITCODE" }
+
+  simulate:
+    needs: unit-tests
+    runs-on: windows-latest
+    timeout-minutes: 10
+    # Fork PRs don't get repo secrets, so AZURE_* would be empty and
+    # add_device.py would fail authentication. Skip the job for those
+    # rather than producing a confusing red check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      NEMOPI_TEST_IMEI: ci-pipeline
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout (with LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python deps
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --quiet -r tools\provisioning_admin\requirements.txt
+
+      - name: Reset test IMEI server-side
+        run: |
+          .\.venv\Scripts\python.exe tools\provisioning_admin\add_device.py `
+            --imei $env:NEMOPI_TEST_IMEI --developer --reset
+
+      - name: Launch simulator (clean fskv)
+        # Bump this path when a new simulator version is pinned (see
+        # CLAUDE.md → Simulator and firmware version pinning).
+        run: |
+          $exe = '.\tools\luatos_pc\V2031\luatos-pc.exe'
+          if (-not (Test-Path $exe)) { throw "$exe missing — was LFS pulled?" }
+          if (Test-Path fskv.bin) { Remove-Item fskv.bin -Force }
+          if (Test-Path pclogs)   { Remove-Item pclogs -Recurse -Force }
+          Start-Process -FilePath $exe `
+            -ArgumentList ".\platforms\PC\", ".\src\" -WindowStyle Hidden
+
+      - name: Wait for provisioning success or failure markers
+        run: |
+          $timeout = 120
+          $start = Get-Date
+          # Success: the script has crossed communication.init and entered the
+          # main setup phase, which only runs if MQTT connected.
+          $successMarker = 'I/user.main setup'
+          # Failure: explicit init failure, or the imminent-reboot countdown that
+          # follows it. Either means provisioning never completed.
+          $failureMarkers = @(
+              'E/user.communication init failed',
+              'reboot_with_delay_blocking'
+          )
+          while ((Get-Date) - $start -lt [TimeSpan]::FromSeconds($timeout)) {
+            $log = Get-ChildItem pclogs\luatos_pc_*.log -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($log) {
+              $content = Get-Content $log.FullName -Raw -ErrorAction SilentlyContinue
+              if ($content -and ($content -match [regex]::Escape($successMarker))) {
+                Write-Host "PASS: simulator entered main setup (provisioning succeeded)"
+                exit 0
+              }
+              foreach ($f in $failureMarkers) {
+                if ($content -and ($content -match [regex]::Escape($f))) {
+                  Write-Host "FAIL: detected failure marker '$f'"
+                  exit 1
+                }
+              }
+            }
+            Start-Sleep -Seconds 3
+          }
+          Write-Host "TIMEOUT: no success/failure marker after $timeout seconds"
+          exit 1
+
+      - name: Dump simulator log
+        if: always()
+        run: |
+          $log = Get-ChildItem pclogs\luatos_pc_*.log -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($log) {
+            Write-Host "=== $($log.Name) ==="
+            Get-Content $log.FullName
+          } else {
+            Write-Host "no log file in pclogs/"
+          }
+
+      - name: Stop simulator
+        if: always()
+        run: Stop-Process -Name luatos-pc -Force -ErrorAction SilentlyContinue
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-logs
+          path: pclogs/
+          if-no-files-found: warn

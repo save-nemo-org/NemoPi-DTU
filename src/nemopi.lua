@@ -5,6 +5,7 @@ local utils = require("utils")
 local modbus = require("modbus")
 local power = require("power")
 local sensors = require("sensors")
+local gps = require("gps")
 local led = require("led")
 
 local imei = mobile.imei()
@@ -32,6 +33,12 @@ end
 
 local function fskv_setup()
     fskv.init()
+
+    -- Schema migration must happen before any other fskv read in the boot
+    -- path — it may drop keys that older code wrote. See src/fskv_migrate.lua.
+    local fskv_migrate = require("fskv_migrate")
+    fskv_migrate.run()
+
     local used, total, kv_count = fskv.status()
     log.info("fskv", "used", used, "total", total, "kv_count", kv_count)
 
@@ -179,6 +186,7 @@ sys.taskInit(function()
 
     log.info("main", "setup")
     power.setup()
+    gps.setup()
     modbus.enable(UART_ID, RS485_EN_GPIO)
 
     sys.wait(2 * 1000)
@@ -221,7 +229,7 @@ sys.taskInit(function()
 
         do
             local vbat = power.internal.vbat()
-            local lat_lon = sensors.infrastructure.Gps:read()
+            local lat_lon = gps.location()
             local cell = utils.cell_info()
 
             local total, used, max = rtos.meminfo("lua")

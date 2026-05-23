@@ -36,29 +36,42 @@ _G.fskv = require("fake_fskv")
 local real_sys_wait = sys.wait  -- restored before exit so log drain works
 sys.wait = function() end
 
+-- Register each test suite as {name, tests}. Requires must be literal
+-- strings so LuatOS's dependency-trimming pass keeps the suite files in
+-- the bundle (`require(variable)` is dynamic and gets dropped). To add
+-- a new suite, drop a file under test/ exposing { test_xxx = fn, … }
+-- and append a new {name = "...", tests = require("...")} entry.
+local suites = {
+    {name = "test_provisioning",  tests = require("test_provisioning")},
+    {name = "test_fskv_migrate",  tests = require("test_fskv_migrate")},
+}
+
 sys.taskInit(function()
-    local tests = require("test_provisioning")
-
-    local names = {}
-    for name in pairs(tests) do table.insert(names, name) end
-    table.sort(names)
-
     local passed, failed, failures = 0, 0, {}
 
-    for _, name in ipairs(names) do
-        _G.http.reset()
-        _G.fskv.reset()
+    for _, suite in ipairs(suites) do
+        local suite_name = suite.name
+        local tests = suite.tests
+        local names = {}
+        for name in pairs(tests) do table.insert(names, name) end
+        table.sort(names)
 
-        log.info("test", "RUN ", name)
-        local ok, err = pcall(tests[name])
-        if ok then
-            passed = passed + 1
-            log.info("test", "PASS", name)
-        else
-            failed = failed + 1
-            table.insert(failures, name .. ": " .. tostring(err))
-            log.error("test", "FAIL", name)
-            log.error("test", "  ", tostring(err))
+        for _, name in ipairs(names) do
+            _G.http.reset()
+            _G.fskv.reset()
+
+            local qualified = suite_name .. "::" .. name
+            log.info("test", "RUN ", qualified)
+            local ok, err = pcall(tests[name])
+            if ok then
+                passed = passed + 1
+                log.info("test", "PASS", qualified)
+            else
+                failed = failed + 1
+                table.insert(failures, qualified .. ": " .. tostring(err))
+                log.error("test", "FAIL", qualified)
+                log.error("test", "  ", tostring(err))
+            end
         end
     end
 

@@ -33,6 +33,12 @@ end
 
 local function fskv_setup()
     fskv.init()
+
+    -- Schema migration must happen before any other fskv read in the boot
+    -- path — it may drop keys that older code wrote. See src/fskv_migrate.lua.
+    local fskv_migrate = require("fskv_migrate")
+    fskv_migrate.run()
+
     local used, total, kv_count = fskv.status()
     log.info("fskv", "used", used, "total", total, "kv_count", kv_count)
 

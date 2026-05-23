@@ -12,6 +12,7 @@
         "socket",
         "pack",
         "pm",
-        "http"
+        "http",
+        "libgnss"
     ]
 }

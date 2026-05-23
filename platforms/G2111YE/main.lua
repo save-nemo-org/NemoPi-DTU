@@ -33,6 +33,9 @@ _G.HW = {
     vbat_scale_num = 273300,
     vbat_scale_den = 3300,
     sensor_supply = { kind = "noop" },
+    -- Confirmed on real hardware (commit message): 9600 baud yields a
+    -- valid fix on the YED-bundled on-board GPS module; that's also the
+    -- module's factory default, so the default in gps.lua is enough.
     gps = { kind = "on_board", uart_id = 2, power_gpio = 21 },
 }
 

@@ -58,7 +58,7 @@ local function read_ds18b20_logger()
     if result[1] ~= -32768 then
         table.insert(sensor_results, {
             channel = "ch1",
-            value = result[1] / 10.0,
+            value = result[1] / 10,
             fault = ""
         })
     else
@@ -72,7 +72,7 @@ local function read_ds18b20_logger()
     if result[2] ~= -32768 then
         table.insert(sensor_results, {
             channel = "ch2",
-            value = result[2] / 10.0,
+            value = result[2] / 10,
             fault = ""
         })
     else

@@ -1,0 +1,64 @@
+# Patch: fskv.bin persistence for the LuatOS-PC simulator
+#
+# Applied to: openLuat/luatos-soc-pc @ 5914a27
+# Tested with: openLuat/LuatOS        @ 13f2a57
+#
+# What it does:
+#   - On init:  loads fskv.bin from cwd into the in-memory LittleFS buffer
+#   - On sync:  flushes the buffer back to fskv.bin after every write
+#
+# Why it's needed (local dev only; CI does not apply this):
+#   The upstream block_device_sync() is a no-op. Without this patch the
+#   provisioning credentials stored in LittleFS are lost when the simulator
+#   exits, so extract_creds.py can't read them.
+#
+# To upgrade (when bumping SIM_COMMIT / LUATOS_COMMIT in setup-sim.sh):
+#   1. Clone/checkout the new upstream commit
+#   2. Manually apply the same three-line changes shown below
+#   3. Run: git diff port/luat_fskv_pc.c > tools/patches/luat_fskv_pc_persist.patch
+#   4. Update the "Applied to" header above + the pins in setup-sim.sh and
+#      .github/workflows/integration-test-simulator.yml, then commit all three.
+#
+diff --git a/port/luat_fskv_pc.c b/port/luat_fskv_pc.c
+index d0ba420..91826d6 100644
+--- a/port/luat_fskv_pc.c
++++ b/port/luat_fskv_pc.c
+@@ -1,6 +1,7 @@
+ #include "luat_base.h"
+ #include "luat_fskv.h"
+ #include "luat_malloc.h"
++#include <stdio.h>
+ 
+ #define LUAT_LOG_TAG "fskv"
+ #include "luat_log.h"
+@@ -50,10 +51,15 @@ static int block_device_erase(const struct lfs_config *cfg, lfs_block_t block)
+     return 0;
+ }
+ 
+-// Sync the block device
++// Sync the block device — persist the entire image to fskv.bin
+ static int block_device_sync(const struct lfs_config *cfg)
+ {
+     (void)cfg;
++    FILE *f = fopen("fskv.bin", "wb");
++    if (f) {
++        fwrite(fskv_buff, 1, LFS_BLOCK_DEVICE_TOTOAL_SIZE, f);
++        fclose(f);
++    }
+     return 0;
+ }
+ 
+@@ -79,6 +85,13 @@ int luat_fskv_init(void)
+     fskv_lfs_conf.read_buffer = luat_heap_malloc(4096);
+     fskv_lfs_conf.context = NULL;
+ 
++    // Load persisted image from fskv.bin if it exists
++    FILE *f = fopen("fskv.bin", "rb");
++    if (f) {
++        fread(fskv_buff, 1, LFS_BLOCK_DEVICE_TOTOAL_SIZE, f);
++        fclose(f);
++    }
++
+     ret = lfs_mount(&fskv_lfs, &fskv_lfs_conf);
+     if (ret != LFS_ERR_OK)
+     {
